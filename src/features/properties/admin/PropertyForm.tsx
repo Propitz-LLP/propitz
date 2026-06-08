@@ -352,7 +352,7 @@ export function PropertyForm({ property }: { property?: Property }) {
               <div className="form-label">Status</div>
               <select
                 value={status}
-                onChange={e => setStatus(e.target.value)}
+                onChange={e => setStatus(e.target.value as 'Draft' | 'Open' | 'Fully Subscribed' | 'Closed')}
                 style={{
                   width: '100%', padding: '10px 14px', border: '1px solid var(--border-strong)',
                   borderRadius: 8, fontSize: 14, color: 'var(--navy)', background: '#fff',
