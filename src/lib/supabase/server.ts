@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { config } from '@/lib/config'
 
@@ -28,21 +29,20 @@ export async function createClient() {
 
 // Admin client — uses secret key (sb_secret_xxx), bypasses RLS
 // Only call from server-side lib/db/ functions, never from client components
+//
+// Must NOT use the cookie-based SSR client: createServerClient reads the user's
+// auth cookie and sends that session JWT as the Authorization bearer, which
+// overrides the secret key — so requests run as the logged-in user and stay
+// subject to RLS. A plain supabase-js client with no session sends the secret
+// key as the bearer, which is what actually bypasses RLS.
 export async function createAdminClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
+  return createSupabaseClient(
     config.supabase.url,
     config.supabase.secretKey,
     {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
       },
     }
   )
