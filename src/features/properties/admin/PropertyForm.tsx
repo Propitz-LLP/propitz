@@ -123,13 +123,11 @@ export function PropertyForm({ property }: { property?: Property }) {
         : await createPropertyAction(fd)
       if (result?.error) {
         setErrors(result.error as Record<string, string[]>)
-        // Scroll to top so user sees the errors
         window.scrollTo({ top: 0, behavior: 'smooth' })
       } else if (result?.success) {
-        // updatePropertyAction succeeded — redirect to list with success banner
-        router.push(`/admin/properties?updated=${encodeURIComponent(name)}`)
+        const param = isEdit ? 'updated' : 'created'
+        router.push(`/admin/properties?${param}=${encodeURIComponent(name)}`)
       }
-      // createPropertyAction redirects server-side (no client handling needed)
     })
   }
 

@@ -3,7 +3,6 @@
 import { requireAdmin } from '@/lib/auth'
 import { createProperty, updateProperty } from '@/lib/db/properties'
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { propertySchema } from './schemas'
 import type { Property } from '@/types'
 
@@ -17,7 +16,7 @@ export async function createPropertyAction(formData: FormData) {
   const property = await createProperty(parsed.data as Omit<Property, 'id' | 'createdAt' | 'updatedAt' | 'subscribedUnits'>)
 
   revalidatePath('/admin/properties')
-  redirect(`/admin/properties?created=${encodeURIComponent(property.name)}`)
+  return { success: true, name: property.name }
 }
 
 export async function updatePropertyAction(id: string, formData: FormData) {
