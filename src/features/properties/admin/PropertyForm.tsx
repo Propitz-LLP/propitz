@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { createPropertyAction, updatePropertyAction } from '../actions'
 import type { Property } from '@/types'
 
@@ -78,6 +79,7 @@ export function PropertyForm({ property }: { property?: Property }) {
   const [status,       setStatus]       = useState(property?.status ?? 'Draft')
   const [errors,       setErrors]       = useState<Record<string, string[]>>({})
   const [isPending,    startTransition] = useTransition()
+  const router = useRouter()
 
   // Auto-calculate unit price from valuation ÷ units
   function handleValuationChange(v: string) {
@@ -119,7 +121,15 @@ export function PropertyForm({ property }: { property?: Property }) {
       const result = isEdit
         ? await updatePropertyAction(property!.id, fd)
         : await createPropertyAction(fd)
-      if (result?.error) setErrors(result.error as Record<string, string[]>)
+      if (result?.error) {
+        setErrors(result.error as Record<string, string[]>)
+        // Scroll to top so user sees the errors
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      } else if (result?.success) {
+        // updatePropertyAction succeeded — redirect to list with success banner
+        router.push(`/admin/properties?updated=${encodeURIComponent(name)}`)
+      }
+      // createPropertyAction redirects server-side (no client handling needed)
     })
   }
 

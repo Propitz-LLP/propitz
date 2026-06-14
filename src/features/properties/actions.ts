@@ -17,7 +17,7 @@ export async function createPropertyAction(formData: FormData) {
   const property = await createProperty(parsed.data as Omit<Property, 'id' | 'createdAt' | 'updatedAt' | 'subscribedUnits'>)
 
   revalidatePath('/admin/properties')
-  redirect(`/admin/properties/${property.id}/edit`)
+  redirect(`/admin/properties?created=${encodeURIComponent(property.name)}`)
 }
 
 export async function updatePropertyAction(id: string, formData: FormData) {

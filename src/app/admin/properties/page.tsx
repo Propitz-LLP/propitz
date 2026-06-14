@@ -1,13 +1,20 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { requireAdmin } from '@/lib/auth'
 import { listAllProperties } from '@/lib/db/properties'
 import { PropertyTable } from '@/features/properties/admin/PropertyTable'
+import { SuccessBanner } from '@/components/ui/SuccessBanner'
 
 export default async function AdminPropertiesPage() {
   await requireAdmin()
   const properties = await listAllProperties()
   return (
     <div className="max-w-[1100px] mx-auto px-8 py-8">
+      {/* Success banner — reads ?created= or ?updated= from URL */}
+      <Suspense>
+        <SuccessBanner />
+      </Suspense>
+
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, color: 'var(--navy)', marginBottom: 4 }}>
