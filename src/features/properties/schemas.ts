@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+export const AREA_UNITS = ['sqft', 'sqm', 'sqyd', 'acres', 'cents', 'grounds', 'guntha'] as const
+export type AreaUnit = typeof AREA_UNITS[number]
+
 export const propertySchema = z.object({
   name: z.string().min(1, 'Required'),
   slug: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase letters, numbers and hyphens only'),
@@ -17,6 +20,8 @@ export const propertySchema = z.object({
   holdingPeriod: z.string().min(1, 'Required'),
   lockInPeriod: z.string().min(1, 'Required'),
   minInvestmentUnits: z.coerce.number().int().positive(),
+  totalArea: z.coerce.number().positive().optional(),
+  areaUnit: z.enum(AREA_UNITS).optional(),
   coverEmoji: z.string().default('🏢'),
   coverGradient: z.string().default('linear-gradient(135deg,#1B3057,#2A4A7A)'),
   status: z.enum(['Draft', 'Open', 'Fully Subscribed', 'Closed']).default('Draft'),

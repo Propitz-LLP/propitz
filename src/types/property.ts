@@ -1,5 +1,6 @@
 export type PropertyStatus = 'Draft' | 'Open' | 'Fully Subscribed' | 'Closed'
 export type AssetType = 'Commercial' | 'Residential' | 'Land'
+export type AreaUnit = 'sqft' | 'sqm' | 'sqyd' | 'acres' | 'cents' | 'grounds' | 'guntha'
 
 export interface Property {
   id: string
@@ -21,6 +22,8 @@ export interface Property {
   lockInPeriod: string
   minInvestmentUnits: number
   status: PropertyStatus
+  totalArea?: number
+  areaUnit?: AreaUnit
   coverEmoji: string
   coverGradient: string
   createdAt: string

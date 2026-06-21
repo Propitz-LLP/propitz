@@ -3,7 +3,9 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createPropertyAction, updatePropertyAction } from '../actions'
+import { AREA_UNITS } from '../schemas'
 import type { Property } from '@/types'
+import type { AreaUnit } from '../schemas'
 
 /* ── helpers ─────────────────────────────────────────── */
 function toSlug(s: string) {
@@ -76,6 +78,8 @@ export function PropertyForm({ property }: { property?: Property }) {
   const [holdingPeriod,setHoldingPeriod]= useState(property?.holdingPeriod ?? '')
   const [lockInPeriod, setLockInPeriod] = useState(property?.lockInPeriod ?? '')
   const [emoji,        setEmoji]        = useState(property?.coverEmoji ?? '🏢')
+  const [totalArea,    setTotalArea]    = useState(property?.totalArea?.toString() ?? '')
+  const [areaUnit,     setAreaUnit]     = useState<AreaUnit>(property?.areaUnit ?? 'sqft')
   const [status,       setStatus]       = useState(property?.status ?? 'Draft')
   const [errors,       setErrors]       = useState<Record<string, string[]>>({})
   const [isPending,    startTransition] = useTransition()
@@ -114,6 +118,8 @@ export function PropertyForm({ property }: { property?: Property }) {
     fd.set('unitPrice', unitPrice); fd.set('minInvestmentUnits', minUnits)
     fd.set('rentalYieldPct', yieldPct); fd.set('capitalGrowthPct', growthPct)
     fd.set('holdingPeriod', holdingPeriod); fd.set('lockInPeriod', lockInPeriod)
+    if (totalArea) fd.set('totalArea', totalArea)
+    if (totalArea) fd.set('areaUnit', areaUnit)
     fd.set('coverEmoji', emoji); fd.set('status', status)
     fd.set('coverGradient', 'linear-gradient(135deg,#1B3057,#2A4A7A)')
 
@@ -192,6 +198,34 @@ export function PropertyForm({ property }: { property?: Property }) {
                 {err('assetType') && <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 3 }}>{err('assetType')}</div>}
               </Field>
             </div>
+
+            <Field label="Total Area">
+              <div style={{ display: 'flex', gap: 10 }}>
+                <input
+                  className="form-input"
+                  type="number"
+                  value={totalArea}
+                  onChange={e => setTotalArea(e.target.value)}
+                  placeholder="e.g. 2400"
+                  min="0"
+                  step="any"
+                  style={{ flex: 1 }}
+                />
+                <select
+                  value={areaUnit}
+                  onChange={e => setAreaUnit(e.target.value as AreaUnit)}
+                  style={{
+                    padding: '10px 14px', border: '1px solid var(--border-strong)',
+                    borderRadius: 8, fontSize: 14, color: 'var(--navy)', background: '#fff',
+                    minWidth: 110,
+                  }}
+                >
+                  {AREA_UNITS.map(u => (
+                    <option key={u} value={u}>{u === 'sqft' ? 'sq ft' : u === 'sqm' ? 'sq m' : u === 'sqyd' ? 'sq yd' : u.charAt(0).toUpperCase() + u.slice(1)}</option>
+                  ))}
+                </select>
+              </div>
+            </Field>
 
             <Field label="Display Emoji" hint="Single emoji shown on property cards.">
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
