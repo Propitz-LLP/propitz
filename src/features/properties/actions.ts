@@ -2,7 +2,7 @@
 
 import { put, del } from '@vercel/blob'
 import { requireAdmin } from '@/lib/auth'
-import { createProperty, updateProperty, getPropertyById } from '@/lib/db/properties'
+import { createProperty, updateProperty, getPropertyByIdAdmin } from '@/lib/db/properties'
 import { revalidatePath } from 'next/cache'
 import { propertySchema } from './schemas'
 import type { Property } from '@/types'
@@ -59,16 +59,27 @@ export async function updatePropertyAction(id: string, formData: FormData) {
 
   const raw = Object.fromEntries(formData.entries())
   if (uploaded) (raw as Record<string, unknown>).imageUrl = uploaded.url
+
+  // An emptied area field means "clear it" — strip before Zod (empty string
+  // fails number coercion) and null the columns explicitly.
+  const clears: Record<string, null> = {}
+  if (raw.totalArea === '') {
+    delete raw.totalArea
+    delete raw.areaUnit
+    clears.totalArea = null
+    clears.areaUnit = null
+  }
+
   const parsed = propertySchema.partial().safeParse(raw)
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
 
   // Replacing the image? Remove the old blob so it doesn't orphan.
   if (uploaded) {
-    const existing = await getPropertyById(id)
+    const existing = await getPropertyByIdAdmin(id)
     if (existing?.imageUrl) await del(existing.imageUrl).catch(() => {})
   }
 
-  await updateProperty(id, parsed.data)
+  await updateProperty(id, { ...parsed.data, ...clears } as Partial<Property>)
   revalidatePath('/admin/properties')
   revalidatePath(`/admin/properties/${id}/edit`)
   return { success: true }
