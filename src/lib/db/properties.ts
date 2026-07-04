@@ -44,6 +44,19 @@ export async function getPropertyById(id: string): Promise<Property | null> {
   return data as Property
 }
 
+// Admin-context fetch — bypasses RLS so Draft/Closed properties are editable.
+// Only call from routes already guarded by requireAdmin().
+export async function getPropertyByIdAdmin(id: string): Promise<Property | null> {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('properties')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (error || !data) return null
+  return data as Property
+}
+
 export async function createProperty(
   property: Omit<Property, 'id' | 'createdAt' | 'updatedAt' | 'subscribedUnits'>,
 ): Promise<Property> {

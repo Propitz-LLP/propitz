@@ -90,6 +90,7 @@ export function PropertyForm({ property }: { property?: Property }) {
     fd.set('rentalYieldPct', yieldPct); fd.set('capitalGrowthPct', growthPct)
     fd.set('holdingPeriod', holdingPeriod); fd.set('lockInPeriod', lockInPeriod)
     if (totalArea) { fd.set('totalArea', totalArea); fd.set('areaUnit', areaUnit) }
+    else if (isEdit) fd.set('totalArea', '') // empty on edit = clear the stored area
     if (imageFile) fd.set('image', imageFile)
     fd.set('coverEmoji', emoji); fd.set('status', status)
     fd.set('coverGradient', 'linear-gradient(135deg,#1B3057,#2A4A7A)')
@@ -215,15 +216,27 @@ export function PropertyForm({ property }: { property?: Property }) {
             <Field label="Property Image" hint="Optional. JPEG, PNG or WebP up to 4 MB. Shown on property cards instead of the emoji.">
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 {imagePreview && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={imagePreview}
-                    alt="Property preview"
-                    style={{
-                      width: 96, height: 64, objectFit: 'cover', borderRadius: 8,
-                      border: '1px solid var(--border)', flexShrink: 0,
-                    }}
-                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imagePreview}
+                      alt="Property preview"
+                      style={{
+                        width: 96, height: 64, objectFit: 'cover', borderRadius: 8,
+                        border: '1px solid var(--border)',
+                      }}
+                    />
+                    {!imageFile && property?.imageUrl && (
+                      <a
+                        href={property.imageUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontSize: 11, color: 'var(--navy-mid)', textAlign: 'center' }}
+                      >
+                        View full size ↗
+                      </a>
+                    )}
+                  </div>
                 )}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <input

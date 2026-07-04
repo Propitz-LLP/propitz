@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/auth'
-import { getPropertyById } from '@/lib/db/properties'
+import { getPropertyByIdAdmin } from '@/lib/db/properties'
 import { PropertyForm } from '@/features/properties/admin/PropertyForm'
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
 export default async function EditPropertyPage({ params }: Props) {
   const { slug } = await params
   await requireAdmin()
-  const property = await getPropertyById(slug)
+  const property = await getPropertyByIdAdmin(slug)
   if (!property) notFound()
   return (
     <div className="max-w-[1100px] mx-auto px-8 py-8">
