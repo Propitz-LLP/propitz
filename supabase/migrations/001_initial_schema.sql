@@ -73,6 +73,7 @@ create table properties (
   status                text not null default 'Draft',
   "totalArea"           numeric,
   "areaUnit"            text,
+  "imageUrl"            text,
   "coverEmoji"          text not null default '🏢',
   "coverGradient"       text not null default 'linear-gradient(135deg,#1B3057,#2A4A7A)',
   "createdAt"           timestamptz not null default now(),

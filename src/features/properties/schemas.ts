@@ -22,6 +22,7 @@ export const propertySchema = z.object({
   minInvestmentUnits: z.coerce.number().int().positive(),
   totalArea: z.coerce.number().positive().optional(),
   areaUnit: z.enum(AREA_UNITS).optional(),
+  imageUrl: z.string().url().optional(),
   coverEmoji: z.string().default('🏢'),
   coverGradient: z.string().default('linear-gradient(135deg,#1B3057,#2A4A7A)'),
   status: z.enum(['Draft', 'Open', 'Fully Subscribed', 'Closed']).default('Draft'),

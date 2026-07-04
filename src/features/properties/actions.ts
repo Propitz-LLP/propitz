@@ -1,15 +1,47 @@
 'use server'
 
+import { put, del } from '@vercel/blob'
 import { requireAdmin } from '@/lib/auth'
-import { createProperty, updateProperty } from '@/lib/db/properties'
+import { createProperty, updateProperty, getPropertyById } from '@/lib/db/properties'
 import { revalidatePath } from 'next/cache'
 import { propertySchema } from './schemas'
 import type { Property } from '@/types'
 
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const IMAGE_MAX_BYTES = 4 * 1024 * 1024 // 4 MB — stays under Vercel's request body limit
+
+/**
+ * Pops the `image` file out of the FormData (so zod parsing sees only scalar
+ * fields) and uploads it to Vercel Blob. Returns the public URL, null when no
+ * file was provided, or a field-error object on validation failure.
+ */
+async function uploadImage(formData: FormData, slug: string): Promise<
+  { url: string } | { error: Record<string, string[]> } | null
+> {
+  const file = formData.get('image')
+  formData.delete('image')
+  if (!(file instanceof File) || file.size === 0) return null
+
+  if (!IMAGE_TYPES.includes(file.type)) {
+    return { error: { image: ['Only JPEG, PNG or WebP images are allowed'] } }
+  }
+  if (file.size > IMAGE_MAX_BYTES) {
+    return { error: { image: ['Image must be under 4 MB'] } }
+  }
+
+  const ext = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
+  const blob = await put(`properties/${slug}-${Date.now()}.${ext}`, file, { access: 'public' })
+  return { url: blob.url }
+}
+
 export async function createPropertyAction(formData: FormData) {
   await requireAdmin()
 
+  const uploaded = await uploadImage(formData, String(formData.get('slug') ?? 'property'))
+  if (uploaded && 'error' in uploaded) return { error: uploaded.error }
+
   const raw = Object.fromEntries(formData.entries())
+  if (uploaded) (raw as Record<string, unknown>).imageUrl = uploaded.url
   const parsed = propertySchema.safeParse(raw)
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
 
@@ -22,9 +54,19 @@ export async function createPropertyAction(formData: FormData) {
 export async function updatePropertyAction(id: string, formData: FormData) {
   await requireAdmin()
 
+  const uploaded = await uploadImage(formData, String(formData.get('slug') ?? 'property'))
+  if (uploaded && 'error' in uploaded) return { error: uploaded.error }
+
   const raw = Object.fromEntries(formData.entries())
+  if (uploaded) (raw as Record<string, unknown>).imageUrl = uploaded.url
   const parsed = propertySchema.partial().safeParse(raw)
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
+
+  // Replacing the image? Remove the old blob so it doesn't orphan.
+  if (uploaded) {
+    const existing = await getPropertyById(id)
+    if (existing?.imageUrl) await del(existing.imageUrl).catch(() => {})
+  }
 
   await updateProperty(id, parsed.data)
   revalidatePath('/admin/properties')
