@@ -24,6 +24,7 @@ export interface Property {
   status: PropertyStatus
   totalArea?: number
   areaUnit?: AreaUnit
+  imageUrl?: string
   coverEmoji: string
   coverGradient: string
   createdAt: string

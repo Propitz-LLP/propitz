@@ -46,6 +46,8 @@ export function PropertyForm({ property }: { property?: Property }) {
   const [holdingPeriod, setHoldingPeriod] = useState(property?.holdingPeriod ?? '')
   const [lockInPeriod,  setLockInPeriod]  = useState(property?.lockInPeriod ?? '')
   const [emoji,         setEmoji]         = useState(property?.coverEmoji ?? '🏢')
+  const [imageFile,     setImageFile]     = useState<File | null>(null)
+  const [imagePreview,  setImagePreview]  = useState<string | null>(property?.imageUrl ?? null)
   const [totalArea,     setTotalArea]     = useState(property?.totalArea?.toString() ?? '')
   const [areaUnit,      setAreaUnit]      = useState<AreaUnit>(property?.areaUnit ?? 'sqft')
   const [status,        setStatus]        = useState(property?.status ?? 'Draft')
@@ -70,6 +72,11 @@ export function PropertyForm({ property }: { property?: Property }) {
     if (!slugEdited) setSlug(toSlug(v))
   }
 
+  function handleImageChange(file: File | null) {
+    setImageFile(file)
+    setImagePreview(file ? URL.createObjectURL(file) : property?.imageUrl ?? null)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setErrors({})
@@ -83,6 +90,7 @@ export function PropertyForm({ property }: { property?: Property }) {
     fd.set('rentalYieldPct', yieldPct); fd.set('capitalGrowthPct', growthPct)
     fd.set('holdingPeriod', holdingPeriod); fd.set('lockInPeriod', lockInPeriod)
     if (totalArea) { fd.set('totalArea', totalArea); fd.set('areaUnit', areaUnit) }
+    if (imageFile) fd.set('image', imageFile)
     fd.set('coverEmoji', emoji); fd.set('status', status)
     fd.set('coverGradient', 'linear-gradient(135deg,#1B3057,#2A4A7A)')
 
@@ -203,6 +211,43 @@ export function PropertyForm({ property }: { property?: Property }) {
                 <input className="form-input" value={emoji} onChange={e => setEmoji(e.target.value)} maxLength={4} style={{ flex: 1 }} />
               </div>
             </Field>
+
+            <Field label="Property Image" hint="Optional. JPEG, PNG or WebP up to 4 MB. Shown on property cards instead of the emoji.">
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                {imagePreview && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imagePreview}
+                    alt="Property preview"
+                    style={{
+                      width: 96, height: 64, objectFit: 'cover', borderRadius: 8,
+                      border: '1px solid var(--border)', flexShrink: 0,
+                    }}
+                  />
+                )}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={e => handleImageChange(e.target.files?.[0] ?? null)}
+                    style={{ fontSize: 13 }}
+                  />
+                  {imageFile && (
+                    <button
+                      type="button"
+                      onClick={() => handleImageChange(null)}
+                      style={{
+                        alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
+                        fontSize: 12, color: 'var(--red)', cursor: 'pointer', textDecoration: 'underline',
+                      }}
+                    >
+                      Remove selected image
+                    </button>
+                  )}
+                </div>
+              </div>
+              <FieldError msg={err('image')} />
+            </Field>
           </Section>
 
           <Section title="Financial Structure">
@@ -291,7 +336,12 @@ export function PropertyForm({ property }: { property?: Property }) {
               height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 40, background: 'linear-gradient(135deg,#1B3057,#2A4A7A)', position: 'relative',
             }}>
-              <span>{emoji || '🏢'}</span>
+              {imagePreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={imagePreview} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span>{emoji || '🏢'}</span>
+              )}
               <div style={{
                 position: 'absolute', bottom: 0, left: 0, right: 0, padding: '6px 12px',
                 background: 'linear-gradient(transparent,rgba(15,30,56,0.85))',
