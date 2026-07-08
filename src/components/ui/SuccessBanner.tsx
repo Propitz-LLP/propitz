@@ -14,10 +14,13 @@ export function SuccessBanner() {
 
   const created = searchParams.get('created')
   const updated = searchParams.get('updated')
+  const deleted = searchParams.get('deleted')
   const message = created
     ? `✓ "${decodeURIComponent(created)}" was added successfully.`
     : updated
     ? `✓ "${decodeURIComponent(updated)}" was updated successfully.`
+    : deleted
+    ? `✓ "${decodeURIComponent(deleted)}" was deleted.`
     : null
 
   const [visible, setVisible] = useState(!!message)
@@ -30,6 +33,7 @@ export function SuccessBanner() {
     const params = new URLSearchParams(Array.from(searchParams.entries()))
     params.delete('created')
     params.delete('updated')
+    params.delete('deleted')
     const clean = params.size > 0 ? `${pathname}?${params}` : pathname
     router.replace(clean, { scroll: false })
 

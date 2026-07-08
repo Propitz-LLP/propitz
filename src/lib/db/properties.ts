@@ -85,6 +85,26 @@ export async function updateProperty(
   return data as Property
 }
 
+// True when investors have holdings or payment records tied to the property —
+// such properties must be Closed, never deleted, to preserve financial records.
+export async function propertyHasActivity(id: string): Promise<boolean> {
+  const supabase = await createAdminClient()
+  const [ownerships, transactions] = await Promise.all([
+    supabase.from('ownerships').select('id', { count: 'exact', head: true }).eq('propertyId', id),
+    supabase.from('transactions').select('id', { count: 'exact', head: true }).eq('propertyId', id),
+  ])
+  if (ownerships.error) throw new Error(ownerships.error.message)
+  if (transactions.error) throw new Error(transactions.error.message)
+  return (ownerships.count ?? 0) > 0 || (transactions.count ?? 0) > 0
+}
+
+// Hard delete — valuation history and distributions cascade away with the row.
+export async function deletePropertyAdmin(id: string): Promise<void> {
+  const supabase = await createAdminClient()
+  const { error } = await supabase.from('properties').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
 // Atomically decrement available units — called after transaction approval
 export async function reserveUnits(propertyId: string, units: number): Promise<void> {
   const supabase = await createAdminClient()

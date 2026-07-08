@@ -2,7 +2,7 @@
 
 import { put, del } from '@vercel/blob'
 import { requireAdmin } from '@/lib/auth'
-import { createProperty, updateProperty, getPropertyByIdAdmin } from '@/lib/db/properties'
+import { createProperty, updateProperty, getPropertyByIdAdmin, propertyHasActivity, deletePropertyAdmin } from '@/lib/db/properties'
 import { revalidatePath } from 'next/cache'
 import { propertySchema } from './schemas'
 import type { Property } from '@/types'
@@ -83,6 +83,24 @@ export async function updatePropertyAction(id: string, formData: FormData) {
   revalidatePath('/admin/properties')
   revalidatePath(`/admin/properties/${id}/edit`)
   return { success: true }
+}
+
+export async function deletePropertyAction(id: string) {
+  await requireAdmin()
+
+  const property = await getPropertyByIdAdmin(id)
+  if (!property) return { error: 'Property not found' }
+
+  if (await propertyHasActivity(id)) {
+    return { error: 'This property has investor activity and cannot be deleted. Set it to Closed instead.' }
+  }
+
+  if (property.imageUrl) await del(property.imageUrl).catch(() => {})
+  await deletePropertyAdmin(id)
+
+  revalidatePath('/admin/properties')
+  revalidatePath('/properties')
+  return { success: true, name: property.name }
 }
 
 export async function publishPropertyAction(id: string) {

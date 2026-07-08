@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { publishPropertyAction } from '../actions'
+import { useRouter } from 'next/navigation'
+import { publishPropertyAction, deletePropertyAction } from '../actions'
 import type { Property, PropertyStatus } from '@/types'
 
 const STATUS_BADGE: Record<PropertyStatus, string> = {
@@ -22,7 +23,11 @@ export function PropertyTable({ properties }: { properties: Property[] }) {
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter]     = useState('')
   const [publishing, setPublishing]     = useState<string | null>(null)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [deleting, setDeleting]         = useState<string | null>(null)
+  const [deleteError, setDeleteError]   = useState<string | null>(null)
   const [, startTransition]             = useTransition()
+  const router = useRouter()
 
   const filtered = properties.filter(p =>
     (!statusFilter || p.status === statusFilter) &&
@@ -34,6 +39,21 @@ export function PropertyTable({ properties }: { properties: Property[] }) {
     startTransition(async () => {
       await publishPropertyAction(id)
       setPublishing(null)
+    })
+  }
+
+  function handleDelete(id: string) {
+    setDeleting(id)
+    setDeleteError(null)
+    startTransition(async () => {
+      const result = await deletePropertyAction(id)
+      setDeleting(null)
+      setConfirmingId(null)
+      if (result.error) {
+        setDeleteError(result.error)
+      } else if (result.success) {
+        router.push(`/admin/properties?deleted=${encodeURIComponent(result.name!)}`)
+      }
     })
   }
 
@@ -74,6 +94,28 @@ export function PropertyTable({ properties }: { properties: Property[] }) {
           {filtered.length} of {properties.length} properties
         </div>
       </div>
+
+      {/* Delete error */}
+      {deleteError && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 18px', marginBottom: 16, borderRadius: 10,
+            background: 'var(--red-bg, #FDECEC)', border: '1px solid rgba(190,60,60,0.25)',
+            color: 'var(--red)', fontSize: 13.5, fontWeight: 500,
+          }}
+        >
+          <span>{deleteError}</span>
+          <button
+            onClick={() => setDeleteError(null)}
+            aria-label="Dismiss"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', fontSize: 18, lineHeight: 1, padding: '0 4px', opacity: 0.7 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="card">
@@ -185,6 +227,45 @@ export function PropertyTable({ properties }: { properties: Property[] }) {
                             }}
                           >
                             {publishing === p.id ? 'Publishing…' : 'Publish →'}
+                          </button>
+                        )}
+                        {confirmingId === p.id ? (
+                          <>
+                            <span style={{ fontSize: 12, color: 'var(--red)', fontWeight: 500 }}>Delete?</span>
+                            <button
+                              onClick={() => handleDelete(p.id)}
+                              disabled={deleting === p.id}
+                              style={{
+                                fontSize: 12, padding: '4px 10px', borderRadius: 6,
+                                background: 'var(--red)', color: '#fff', border: 'none',
+                                cursor: deleting === p.id ? 'not-allowed' : 'pointer',
+                                opacity: deleting === p.id ? 0.7 : 1,
+                              }}
+                            >
+                              {deleting === p.id ? 'Deleting…' : 'Confirm'}
+                            </button>
+                            <button
+                              onClick={() => setConfirmingId(null)}
+                              disabled={deleting === p.id}
+                              style={{
+                                fontSize: 12, padding: '4px 10px', borderRadius: 6,
+                                border: '1px solid var(--border-strong)', color: 'var(--navy)',
+                                background: '#fff', cursor: 'pointer',
+                              }}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => { setConfirmingId(p.id); setDeleteError(null) }}
+                            style={{
+                              fontSize: 12, padding: '4px 10px', borderRadius: 6,
+                              border: '1px solid rgba(190,60,60,0.35)', color: 'var(--red)',
+                              background: '#fff', cursor: 'pointer',
+                            }}
+                          >
+                            Delete
                           </button>
                         )}
                       </div>
