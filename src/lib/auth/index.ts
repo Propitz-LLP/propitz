@@ -40,7 +40,7 @@ export async function requireKyc(): Promise<AuthUser> {
   const user = await requireAuth()
   const { getInvestorById } = await import('@/lib/db/investors')
   const investor = await getInvestorById(user.id)
-  if (!investor || investor.kycStatus !== 'Approved') redirect('/onboarding/kyc')
+  if (!investor || investor.kycStatus !== 'Approved') redirect('/onboarding/kyc?reason=kyc')
   return user
 }
 

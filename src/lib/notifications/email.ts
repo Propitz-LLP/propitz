@@ -58,6 +58,14 @@ function getEmailProvider(): EmailProvider {
 
 const provider = getEmailProvider()
 
+export async function sendKycReceived(to: string, name: string): Promise<void> {
+  await provider.send({
+    to,
+    subject: 'KYC submission received — Propitz',
+    html: `<p>Hi ${name},</p><p>We have received your KYC submission. Our team will review it within 24–48 hours and notify you once verification is complete.</p>`,
+  })
+}
+
 export async function sendKycApproved(to: string, name: string): Promise<void> {
   await provider.send({
     to,

@@ -27,9 +27,10 @@ export async function updateSession(request: NextRequest) {
   const claims = data?.claims ?? null
 
   const path = request.nextUrl.pathname
-  const isAuthRoute = path.startsWith('/login') || path.startsWith('/onboarding')
+  const isAuthRoute = path.startsWith('/login')
   const isInvestorRoute = path.startsWith('/dashboard') || path.startsWith('/properties') ||
-    path.startsWith('/transactions') || path.startsWith('/documents')
+    path.startsWith('/transactions') || path.startsWith('/documents') ||
+    path.startsWith('/onboarding') // KYC wizard requires a signed-in investor
   const isAdminRoute = path.startsWith('/admin')
   const isApiWebhook = path.startsWith('/api/webhooks')
 

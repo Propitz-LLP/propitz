@@ -1,10 +1,10 @@
-import { requireAuth } from '@/lib/auth'
+import { requireKyc } from '@/lib/auth'
 import { getTransactions } from '@/lib/db/transactions'
 import { TransactionTable } from '@/features/transactions/components/TransactionTable'
 import { TransactionFilters } from '@/features/transactions/components/TransactionFilters'
 
 export default async function TransactionsPage() {
-  const user = await requireAuth()
+  const user = await requireKyc()
   const transactions = await getTransactions({ investorId: user.id })
   return (
     <div className="max-w-[1100px] mx-auto px-8 py-8">

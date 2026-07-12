@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
 export async function loginAction(formData: FormData) {
@@ -53,8 +53,11 @@ export async function signUpAction(formData: FormData) {
 
   if (!data.user) return { error: 'Something went wrong. Please try again.' }
 
-  // Create investor record linked to auth user
-  await supabase.from('investors').insert({
+  // Create investor record linked to auth user. Admin client required —
+  // there is no RLS insert policy for investors on their own row, and the
+  // session cookie isn't reliably set yet in this same request either way.
+  const admin = await createAdminClient()
+  const { error: insertError } = await admin.from('investors').insert({
     id: data.user.id,
     name: email.split('@')[0], // placeholder — updated during KYC
     email,
@@ -63,6 +66,10 @@ export async function signUpAction(formData: FormData) {
     kycStatus: 'Not Started',
     initials: email.slice(0, 2).toUpperCase(),
   })
+
+  if (insertError) {
+    return { error: 'Could not create your investor profile. Please contact support.' }
+  }
 
   redirect('/onboarding/kyc')
 }

@@ -11,11 +11,13 @@ interface Props {
 
 export default async function PropertyDetailPage({ params }: Props) {
   const { slug } = await params
-  await requireAuth()
+  const user = await requireAuth()
 
-  const [property, valuationHistory] = await Promise.all([
+  const { getInvestorById } = await import('@/lib/db/investors')
+  const [property, valuationHistory, investor] = await Promise.all([
     getPropertyBySlug(slug),
     getPropertyBySlug(slug).then(p => p ? getValuationHistory(p.id) : []),
+    getInvestorById(user.id),
   ])
 
   if (!property) notFound()
@@ -28,7 +30,7 @@ export default async function PropertyDetailPage({ params }: Props) {
           <ValuationChart history={valuationHistory} />
         </div>
         <div className="sticky top-5">
-          <SubscribeWidget property={property} />
+          <SubscribeWidget property={property} kycApproved={investor?.kycStatus === 'Approved'} />
         </div>
       </div>
     </div>
