@@ -9,11 +9,14 @@ export function calcPlatformFee(subtotal: number): number {
 export function calcOrderTotal(units: number, unitPrice: number): {
   subtotal: number
   fee: number
+  gst: number
   total: number
 } {
   const subtotal = units * unitPrice
   const fee = calcPlatformFee(subtotal)
-  return { subtotal, fee, total: subtotal + fee }
+  // GST is charged on the platform fee, not the investment amount
+  const gst = Math.round(fee * config.platform.gstOnFeeRatePct / 100)
+  return { subtotal, fee, gst, total: subtotal + fee + gst }
 }
 
 export function calcExitFee(grossAmount: number): number {

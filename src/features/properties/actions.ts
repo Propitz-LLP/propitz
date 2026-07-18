@@ -1,7 +1,7 @@
 'use server'
 
 import { put, del } from '@vercel/blob'
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, requireAuth } from '@/lib/auth'
 import { createProperty, updateProperty, getPropertyByIdAdmin, propertyHasActivity, deletePropertyAdmin } from '@/lib/db/properties'
 import { revalidatePath } from 'next/cache'
 import { propertySchema } from './schemas'
@@ -101,6 +101,19 @@ export async function deletePropertyAction(id: string) {
   revalidatePath('/admin/properties')
   revalidatePath('/properties')
   return { success: true, name: property.name }
+}
+
+// 15-min signed URL for a property-level document (due diligence, title report, …)
+export async function getPropertyDocumentUrlAction(documentId: string) {
+  await requireAuth()
+  const { getDocumentById } = await import('@/lib/db/documents')
+  const doc = await getDocumentById(documentId)
+  if (!doc || doc.investorId !== null || !doc.propertyId) {
+    return { error: 'Document not found' }
+  }
+  const { getStorageProvider, storage } = await import('@/lib/storage')
+  const url = await getStorageProvider().getSignedUrl(storage.buckets.propertyDocs, doc.storagePath, 900)
+  return { url }
 }
 
 export async function publishPropertyAction(id: string) {

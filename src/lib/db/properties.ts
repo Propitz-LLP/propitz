@@ -105,6 +105,14 @@ export async function deletePropertyAdmin(id: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+// Sellable units right now: total − sold − held (active/consumed reservations).
+// Recomputed on every call — financial figures must never be stale-cached (FR-05.2).
+export async function getAvailableUnits(property: Property): Promise<number> {
+  const { getHeldUnits } = await import('./reservations')
+  const held = await getHeldUnits(property.id)
+  return Math.max(0, property.totalUnits - property.subscribedUnits - held)
+}
+
 // Atomically decrement available units — called after transaction approval
 export async function reserveUnits(propertyId: string, units: number): Promise<void> {
   const supabase = await createAdminClient()

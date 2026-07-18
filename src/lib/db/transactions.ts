@@ -36,8 +36,39 @@ export async function getTransactionById(id: string): Promise<Transaction | null
   return data as Transaction
 }
 
+// Admin-context read — RLS admin policies never match (role lives in
+// app_metadata); admin flows must bypass RLS.
+export async function getTransactionByIdAdmin(id: string): Promise<Transaction | null> {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*, transaction_history(*)')
+    .eq('id', id)
+    .single()
+  if (error || !data) return null
+  return data as Transaction
+}
+
+// Admin-context list — same RLS caveat as above
+export async function getTransactionsAdmin(filters: TransactionFilters = {}): Promise<Transaction[]> {
+  const supabase = await createAdminClient()
+  let query = supabase
+    .from('transactions')
+    .select('*, transaction_history(*)')
+    .order('date', { ascending: false })
+
+  if (filters.investorId) query = query.eq('investorId', filters.investorId)
+  if (filters.type)       query = query.eq('type', filters.type)
+  if (filters.propertyId) query = query.eq('propertyId', filters.propertyId)
+  if (filters.status)     query = query.eq('status', filters.status)
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  return (data ?? []) as Transaction[]
+}
+
 export async function getPendingTransactions(): Promise<Transaction[]> {
-  return getTransactions({ status: 'Admin Pending' })
+  return getTransactionsAdmin({ status: 'Admin Pending' })
 }
 
 export async function createTransaction(

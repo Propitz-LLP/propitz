@@ -1,21 +1,31 @@
+import { Suspense } from 'react'
 import { requireAuth } from '@/lib/auth'
 import { listPublishedProperties } from '@/lib/db/properties'
 import { PropertyGrid } from '@/features/properties/components/PropertyGrid'
 import { PropertyFilters } from '@/features/properties/components/PropertyFilters'
 
-export default async function PropertiesPage() {
+export default async function PropertiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>
+}) {
   await requireAuth()
+  const { type } = await searchParams
   const properties = await listPublishedProperties()
+  const filtered = type ? properties.filter(p => p.assetType === type) : properties
+
   return (
     <div className="max-w-[1100px] mx-auto px-8 py-8">
       <div className="flex items-start justify-between mb-7">
         <div>
           <h1 className="font-display text-3xl text-navy mb-1">Browse Properties</h1>
-          <p className="text-sm text-slate-400">{properties.length} opportunities · KYC-verified access</p>
+          <p className="text-sm text-slate-400">{filtered.length} opportunities · KYC-verified access</p>
         </div>
-        <PropertyFilters />
+        <Suspense>
+          <PropertyFilters />
+        </Suspense>
       </div>
-      <PropertyGrid properties={properties} />
+      <PropertyGrid properties={filtered} />
     </div>
   )
 }

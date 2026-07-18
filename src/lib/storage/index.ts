@@ -73,5 +73,6 @@ export const storage = {
     kycDocs: 'kyc-documents',
     certificates: 'certificates',
     propertyImages: 'property-images',
+    propertyDocs: 'property-documents',
   },
 }

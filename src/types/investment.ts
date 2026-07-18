@@ -1,3 +1,15 @@
+export type ReservationStatus = 'active' | 'consumed' | 'released' | 'expired'
+
+export interface UnitReservation {
+  id: string
+  propertyId: string
+  investorId: string
+  units: number
+  status: ReservationStatus
+  expiresAt: string
+  createdAt: string
+}
+
 export interface Ownership {
   id: string
   investorId: string

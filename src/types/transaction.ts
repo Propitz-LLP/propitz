@@ -7,6 +7,8 @@ export type TransactionStatus =
   | 'Completed'
   | 'Rejected'
 
+export type PaymentMethod = 'cash' | 'razorpay' | 'bank_transfer'
+
 export interface Transaction {
   id: string
   investorId: string
@@ -17,6 +19,9 @@ export interface Transaction {
   fee: number
   net: number
   status: TransactionStatus
+  paymentMethod?: PaymentMethod // DB defaults to 'cash'; set explicitly in payment flows
+  paymentRef?: string | null
+  reservationId?: string | null
   razorpayId: string | null
   date: string
   period?: string

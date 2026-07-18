@@ -56,5 +56,13 @@ export const config = {
     feeRatePct: parseFloat(optional('PLATFORM_FEE_PCT', '1.5')),
     exitFeeRatePct: parseFloat(optional('EXIT_FEE_PCT', '2.0')),
     managementFeeRatePct: parseFloat(optional('MANAGEMENT_FEE_PCT', '1.0')),
+    gstOnFeeRatePct: parseFloat(optional('GST_ON_FEE_PCT', '18')),
+  },
+
+  payments: {
+    // Comma-separated payment methods shown to investors. Cash-only for now;
+    // add 'razorpay' here once Sprint 5 lands the checkout + webhook flow.
+    enabledMethods: optional('PAYMENT_METHODS', 'cash').split(',').map(m => m.trim()),
+    reservationTtlSeconds: parseInt(optional('RESERVATION_TTL_SECONDS', '900'), 10),
   },
 } as const

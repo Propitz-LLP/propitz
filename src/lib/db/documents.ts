@@ -12,6 +12,19 @@ export async function getDocumentsByInvestor(investorId: string): Promise<Invest
   return (data ?? []) as InvestorDocument[]
 }
 
+// Property-level documents (investorId null) — due diligence, title report, brochure
+export async function getDocumentsByProperty(propertyId: string): Promise<InvestorDocument[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('propertyId', propertyId)
+    .is('investorId', null)
+    .order('issuedAt', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as InvestorDocument[]
+}
+
 export async function createDocument(
   doc: Omit<InvestorDocument, 'id' | 'signedUrl'>,
 ): Promise<InvestorDocument> {
