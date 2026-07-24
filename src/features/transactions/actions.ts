@@ -1,9 +1,9 @@
 'use server'
 
 import { requireAdmin } from '@/lib/auth'
-import { updateTransactionStatus, getTransactionByIdAdmin } from '@/lib/db/transactions'
-import { allocateUnits } from '@/lib/db/ownerships'
-import { reserveUnits, getPropertyByIdAdmin } from '@/lib/db/properties'
+import { updateTransactionStatus, getTransactionByIdAdmin, approveTransactionAtomic } from '@/lib/db/transactions'
+import { getOwnershipById } from '@/lib/db/ownerships'
+import { getPropertyByIdAdmin } from '@/lib/db/properties'
 import { getInvestorByIdAdmin } from '@/lib/db/investors'
 import { updateReservationStatus } from '@/lib/db/reservations'
 import { generateAndStoreCertificate } from '@/lib/storage/certificates'
@@ -44,24 +44,25 @@ export async function approveTransactionAction(transactionId: string) {
   if (!property || !investor) return { error: 'Property or investor not found' }
   if (!txn.units) return { error: 'Invalid unit count' }
 
-  // 1. Update transaction status
-  await updateTransactionStatus(transactionId, 'Completed', admin.email)
+  // Status, ownership ledger, property counter, and reservation release all
+  // happen atomically in one DB transaction (approve_transaction_atomic RPC) —
+  // either every write lands or none does.
+  let ownershipId: string
+  try {
+    ({ ownershipId } = await approveTransactionAtomic(transactionId, admin.email))
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    if (message.includes('insufficient_units')) return { error: 'Not enough units remain available' }
+    if (message.includes('invalid_status')) return { error: 'Transaction is no longer pending' }
+    throw e
+  }
+  const ownership = await getOwnershipById(ownershipId)
+  if (!ownership) return { error: 'Approved, but ownership record could not be loaded' }
 
-  // 2. Allocate units to investor
-  const ownership = await allocateUnits(investor.id, property.id, txn.units, property.unitPrice)
-
-  // 3. Decrement available units on property
-  await reserveUnits(property.id, txn.units)
-
-  // 4. The hold is now absorbed into subscribedUnits — release it so the
-  //    units aren't double-counted against availability
-  if (txn.reservationId) await updateReservationStatus(txn.reservationId, 'released')
-
-  // 5. Generate ownership certificate
-  await generateAndStoreCertificate(investor, property, ownership)
-
-  // 6. Notify investor
-  await sendTransactionConfirmed(investor.email, investor.name, property.name, txn.units, txn.gross)
+  // Certificate + email are best-effort follow-ups — a failure here must not
+  // roll back the approval, which has already been committed.
+  await generateAndStoreCertificate(investor, property, ownership).catch(() => {})
+  await sendTransactionConfirmed(investor.email, investor.name, property.name, txn.units, txn.gross).catch(() => {})
 
   revalidatePath('/admin/transactions')
   revalidatePath('/transactions')

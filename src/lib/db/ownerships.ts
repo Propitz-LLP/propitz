@@ -65,6 +65,17 @@ export async function allocateUnits(
   return data as Ownership
 }
 
+export async function getOwnershipById(id: string): Promise<Ownership | null> {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('ownerships')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (error || !data) return null
+  return data as Ownership
+}
+
 // Builds the full Portfolio aggregate for an investor
 export async function getPortfolio(investorId: string): Promise<Portfolio> {
   const ownerships = await getOwnershipsByInvestor(investorId)
