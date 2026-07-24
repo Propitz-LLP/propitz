@@ -28,6 +28,15 @@ loadEnv({ path: '.env.test' })
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const SUPABASE_SECRET = process.env.SUPABASE_SECRET_KEY ?? ''
+
+// SAFETY: never seed the production project. A mis-pointed .env.test once left a
+// `propitz.kyc.tester` account (and its KYC/transaction chain) in prod. This
+// aborts before any auth/DB write if the target looks like production.
+const PROD_PROJECT_REF = 'esfumnloqdhgqcxyulcm'
+if (SUPABASE_URL.includes(PROD_PROJECT_REF)) {
+  console.error(`\n  ✗ Refusing to seed: NEXT_PUBLIC_SUPABASE_URL points at the PRODUCTION project (${PROD_PROJECT_REF}).\n    Point .env.test at a separate test project before running the seed.\n`)
+  process.exit(1)
+}
 // Admin REST auth uses the legacy service_role JWT; the sb_secret_ key is
 // intermittently rejected on GoTrue's admin endpoints (see header note).
 const SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''

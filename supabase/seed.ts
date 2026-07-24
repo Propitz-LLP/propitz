@@ -6,6 +6,14 @@ import { createClient } from '@supabase/supabase-js'
 
 dotenv.config({ path: '.env.local' })
 
+// SAFETY: this dev seed inserts demo properties — never let it run against the
+// production project. (A mis-pointed env once contaminated prod with test data.)
+const PROD_PROJECT_REF = 'esfumnloqdhgqcxyulcm'
+if ((process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').includes(PROD_PROJECT_REF)) {
+  console.error(`\n  ✗ Refusing to seed: NEXT_PUBLIC_SUPABASE_URL points at the PRODUCTION project (${PROD_PROJECT_REF}).\n`)
+  process.exit(1)
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
