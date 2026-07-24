@@ -11,7 +11,7 @@ const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD ?? ''
 function requireCreds(email: string, password: string, who: string) {
   if (!email || !password) {
     throw new Error(
-      `Missing ${who} test credentials. Set TEST_${who.toUpperCase()}_EMAIL / _PASSWORD in .env.local and run "npm run test:seed".`,
+      `Missing ${who} test credentials. Set TEST_${who.toUpperCase()}_EMAIL / _PASSWORD in .env.test and run "npm run test:seed".`,
     )
   }
 }

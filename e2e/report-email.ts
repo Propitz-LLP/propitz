@@ -15,7 +15,9 @@ import { config as loadEnv } from 'dotenv'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-loadEnv({ path: '.env.local' })
+// Local runs read .env.test; on CI these come from the environment (GitHub
+// secrets) and the file is absent — dotenv silently no-ops, which is fine.
+loadEnv({ path: '.env.test' })
 
 const JUNIT_PATH = resolve('test-results/results.xml')
 // TEST_REPORT_TO may list several recipients, separated by ',' or ';'. Resend

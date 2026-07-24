@@ -1,8 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 import { config as loadEnv } from 'dotenv'
 
-// Tests read the same .env.local the app uses (Supabase URL/keys, TEST_* creds).
-loadEnv({ path: '.env.local' })
+// Tests read .env.test (Supabase URL/keys, TEST_* creds). On CI the file is
+// absent and these come from the environment (GitHub secrets) — dotenv no-ops.
+loadEnv({ path: '.env.test' })
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
