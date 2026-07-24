@@ -3,10 +3,16 @@
 
 import { config } from '@/lib/config'
 
+export interface EmailAttachment {
+  filename: string
+  content: Buffer
+}
+
 export interface EmailPayload {
   to: string
   subject: string
   html: string
+  attachments?: EmailAttachment[]
 }
 
 export interface EmailProvider {
@@ -24,6 +30,10 @@ class ResendEmailProvider implements EmailProvider {
       to: payload.to,
       subject: payload.subject,
       html: payload.html,
+      attachments: payload.attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+      })),
     })
     if (error) throw new Error(`Email send failed: ${error.message}`)
   }
@@ -107,6 +117,26 @@ export async function sendDistributionCredited(
     to,
     subject: `Distribution credited — ${period}`,
     html: `<p>Hi ${name},</p><p>Your rental distribution of <strong>₹${amount.toLocaleString('en-IN')}</strong> for <strong>${propertyName}</strong> (${period}) has been processed.</p>`,
+  })
+}
+
+// ── E2E test-run report ───────────────────────────────────────
+// Proof-of-run email sent after the Playwright suite (see e2e/report-email.ts).
+// summaryHtml is a pre-rendered results table; report is the zipped HTML report.
+export async function sendTestReport(
+  to: string,
+  passed: boolean,
+  summaryHtml: string,
+  report?: EmailAttachment,
+): Promise<void> {
+  const badge = passed
+    ? '<span style="background:#1e7d4f;color:#fff;padding:4px 10px;border-radius:4px;">PASSED</span>'
+    : '<span style="background:#c0392b;color:#fff;padding:4px 10px;border-radius:4px;">FAILED</span>'
+  await provider.send({
+    to,
+    subject: `${passed ? '✅' : '❌'} Propitz E2E tests — ${passed ? 'passed' : 'FAILED'}`,
+    html: `<p>Propitz end-to-end smoke test run: ${badge}</p>${summaryHtml}`,
+    attachments: report ? [report] : undefined,
   })
 }
 
