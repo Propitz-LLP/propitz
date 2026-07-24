@@ -101,6 +101,23 @@ export async function updateTransactionStatus(
   await appendTransactionHistory(id, status, by)
 }
 
+// Atomic core of approval: status → Completed, ownership allocated, property
+// counter decremented, reservation released — all in one DB transaction via
+// the approve_transaction_atomic RPC (migration 007). Certificate generation
+// and email happen outside this call, as best-effort follow-ups.
+export async function approveTransactionAtomic(
+  transactionId: string,
+  reviewedBy: string,
+): Promise<{ ownershipId: string }> {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase.rpc('approve_transaction_atomic', {
+    p_transaction_id: transactionId,
+    p_reviewed_by: reviewedBy,
+  })
+  if (error) throw new Error(error.message)
+  return { ownershipId: (data as { ownershipId: string }[])[0].ownershipId }
+}
+
 export async function appendTransactionHistory(
   transactionId: string,
   status: TransactionStatus,

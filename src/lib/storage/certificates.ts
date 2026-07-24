@@ -11,11 +11,8 @@ async function generateCertificatePdf(
   // Lazy import — @react-pdf/renderer is large and Node-only
   const { renderToBuffer } = await import('@react-pdf/renderer')
   const { CertificateTemplate } = await import('@/features/documents/components/CertificateTemplate')
-  const { createElement } = await import('react')
 
-  // CertificateTemplate must return a <Document> element from @react-pdf/renderer
-  const element = createElement(CertificateTemplate as any, { investor, property, ownership })
-  return renderToBuffer(element as any) as Promise<Buffer>
+  return renderToBuffer(CertificateTemplate({ investor, property, ownership }))
 }
 
 export async function generateAndStoreCertificate(
