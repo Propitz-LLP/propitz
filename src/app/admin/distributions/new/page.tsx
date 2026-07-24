@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/auth'
 import { listAllProperties } from '@/lib/db/properties'
+import { config } from '@/lib/config'
 import { DistributionForm } from '@/features/distributions/components/DistributionForm'
 
 export default async function NewDistributionPage() {
@@ -12,7 +13,7 @@ export default async function NewDistributionPage() {
         <h1 className="font-display text-3xl text-navy mb-1">New Distribution</h1>
         <p className="text-sm text-slate-400">Initiate a rental distribution payout to all unit holders</p>
       </div>
-      <DistributionForm properties={openProperties} />
+      <DistributionForm properties={openProperties} defaultFeePct={config.platform.distributionFeeRatePct} />
     </div>
   )
 }

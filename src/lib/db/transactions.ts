@@ -118,6 +118,44 @@ export async function approveTransactionAtomic(
   return { ownershipId: (data as { ownershipId: string }[])[0].ownershipId }
 }
 
+// Atomic distribution payout: one Distribution transaction per holder + the
+// summary row, all in one DB transaction via the distribute_atomic RPC
+// (migration 008). A unique (propertyId, period) guard makes it idempotent —
+// a retry raises 'already_distributed'. Emails are best-effort follow-ups.
+export async function distributeAtomic(
+  propertyId: string,
+  period: string,
+  perUnit: number,
+  feePct: number,
+  date: string,
+  by: string,
+): Promise<{
+  distributionId: string
+  investorCount: number
+  grossTotal: number
+  feeTotal: number
+  netTotal: number
+}> {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase.rpc('distribute_atomic', {
+    p_property_id: propertyId,
+    p_period: period,
+    p_per_unit: perUnit,
+    p_fee_pct: feePct,
+    p_date: date,
+    p_by: by,
+  })
+  if (error) throw new Error(error.message)
+  const row = (data as {
+    distributionId: string
+    investorCount: number
+    grossTotal: number
+    feeTotal: number
+    netTotal: number
+  }[])[0]
+  return row
+}
+
 export async function appendTransactionHistory(
   transactionId: string,
   status: TransactionStatus,

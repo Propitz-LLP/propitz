@@ -56,6 +56,7 @@ export const config = {
     feeRatePct: parseFloat(optional('PLATFORM_FEE_PCT', '1.5')),
     exitFeeRatePct: parseFloat(optional('EXIT_FEE_PCT', '2.0')),
     managementFeeRatePct: parseFloat(optional('MANAGEMENT_FEE_PCT', '1.0')),
+    distributionFeeRatePct: parseFloat(optional('DISTRIBUTION_FEE_PCT', '1.0')),
     gstOnFeeRatePct: parseFloat(optional('GST_ON_FEE_PCT', '18')),
   },
 
