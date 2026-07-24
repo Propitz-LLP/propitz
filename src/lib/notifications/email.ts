@@ -9,7 +9,9 @@ export interface EmailAttachment {
 }
 
 export interface EmailPayload {
-  to: string
+  // A single address or several — Resend accepts an array (up to 50); SES uses
+  // ToAddresses[] too. Env-provided lists are split before reaching here.
+  to: string | string[]
   subject: string
   html: string
   attachments?: EmailAttachment[]
@@ -49,7 +51,7 @@ class ResendEmailProvider implements EmailProvider {
 //   async send(payload: EmailPayload): Promise<void> {
 //     await this.client.send(new SendEmailCommand({
 //       Source: config.email.fromAddress,
-//       Destination: { ToAddresses: [payload.to] },
+//       Destination: { ToAddresses: [payload.to].flat() },
 //       Message: {
 //         Subject: { Data: payload.subject },
 //         Body: { Html: { Data: payload.html } },
@@ -124,7 +126,7 @@ export async function sendDistributionCredited(
 // Proof-of-run email sent after the Playwright suite (see e2e/report-email.ts).
 // summaryHtml is a pre-rendered results table; report is the zipped HTML report.
 export async function sendTestReport(
-  to: string,
+  to: string | string[],
   passed: boolean,
   summaryHtml: string,
   report?: EmailAttachment,

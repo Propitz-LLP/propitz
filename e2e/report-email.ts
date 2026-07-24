@@ -18,7 +18,12 @@ import { resolve } from 'node:path'
 loadEnv({ path: '.env.local' })
 
 const JUNIT_PATH = resolve('test-results/results.xml')
-const TO = process.env.TEST_REPORT_TO || process.env.TEST_INVESTOR_EMAIL || ''
+// TEST_REPORT_TO may list several recipients, separated by ',' or ';'. Resend
+// wants an array (it does not parse separators), so split and pass an array.
+const TO = (process.env.TEST_REPORT_TO || process.env.TEST_INVESTOR_EMAIL || '')
+  .split(/[;,]/)
+  .map((addr) => addr.trim())
+  .filter(Boolean)
 const DRY_RUN = process.argv.includes('--dry-run')
 
 interface Case {
@@ -125,7 +130,7 @@ async function main() {
   const summaryHtml = renderSummary(cases)
 
   if (DRY_RUN) {
-    console.log('\n[dry-run] Recipient:', TO || '(none set)')
+    console.log('\n[dry-run] Recipient(s):', TO.length ? TO.join(', ') : '(none set)')
     console.log('[dry-run] Overall:', passed ? 'PASSED' : 'FAILED')
     console.log('[dry-run] Summary HTML written to test-results/report-email.html\n')
     const { writeFileSync } = await import('node:fs')
@@ -133,7 +138,7 @@ async function main() {
     return
   }
 
-  if (!TO) {
+  if (TO.length === 0) {
     console.warn('\n  ⚠ No TEST_REPORT_TO set — skipping email. Summary:\n')
     console.log(cases.map((c) => `    ${c.status.toUpperCase()}  ${c.name}`).join('\n'), '\n')
     return
@@ -151,7 +156,7 @@ async function main() {
     filename: 'results.xml',
     content: Buffer.from(xml, 'utf8'),
   })
-  console.log(`\n  ✓ Test report emailed to ${TO} (overall: ${passed ? 'PASSED' : 'FAILED'}).\n`)
+  console.log(`\n  ✓ Test report emailed to ${TO.join(', ')} (overall: ${passed ? 'PASSED' : 'FAILED'}).\n`)
 }
 
 main().catch((e) => {
