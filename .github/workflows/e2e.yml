@@ -1,12 +1,16 @@
 name: E2E Smoke Tests
 
-# Runs on every merge/push to master, and on demand from the Actions tab.
+# Runs on every merge/push to master, on every PR targeting master (pre-merge
+# gate — the screenshot-proof email doubles as the PR check), and on demand.
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
-# Cancel an in-flight run if a newer commit lands on master.
+# Cancel an in-flight run when a newer commit lands on the same ref (a PR's head
+# branch, or master). github.ref is unique per PR, so PRs don't cancel master.
 concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: true
