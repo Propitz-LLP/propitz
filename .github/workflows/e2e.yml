@@ -74,6 +74,16 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
+      # Full-resolution screenshot proof (also embedded inline in the email).
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
       # Now surface the real test outcome so a broken master shows red.
       - name: Enforce test result
         if: steps.e2e.outcome == 'failure'

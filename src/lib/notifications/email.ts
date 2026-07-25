@@ -6,6 +6,10 @@ import { config } from '@/lib/config'
 export interface EmailAttachment {
   filename: string
   content: Buffer
+  // When set, the attachment is referenced inline from the HTML via
+  // <img src="cid:<contentId>"> instead of appearing as a download. Used by the
+  // E2E report to embed screenshot proof directly in the email body.
+  contentId?: string
 }
 
 export interface EmailPayload {
@@ -35,6 +39,9 @@ class ResendEmailProvider implements EmailProvider {
       attachments: payload.attachments?.map((a) => ({
         filename: a.filename,
         content: a.content,
+        // Resend maps content_id → the MIME Content-ID header, letting the HTML
+        // reference the image inline with src="cid:<id>".
+        ...(a.contentId ? { content_id: a.contentId } : {}),
       })),
     })
     if (error) throw new Error(`Email send failed: ${error.message}`)
@@ -124,12 +131,14 @@ export async function sendDistributionCredited(
 
 // ── E2E test-run report ───────────────────────────────────────
 // Proof-of-run email sent after the Playwright suite (see e2e/report-email.ts).
-// summaryHtml is a pre-rendered results table; report is the zipped HTML report.
+// summaryHtml is a pre-rendered results table (may embed <img src="cid:…">
+// referencing the inline screenshot attachments). attachments carries the JUnit
+// XML plus any screenshot-proof PNGs (those set contentId for inline rendering).
 export async function sendTestReport(
   to: string | string[],
   passed: boolean,
   summaryHtml: string,
-  report?: EmailAttachment,
+  attachments?: EmailAttachment[],
 ): Promise<void> {
   const badge = passed
     ? '<span style="background:#1e7d4f;color:#fff;padding:4px 10px;border-radius:4px;">PASSED</span>'
@@ -138,7 +147,7 @@ export async function sendTestReport(
     to,
     subject: `${passed ? '✅' : '❌'} Propitz E2E tests — ${passed ? 'passed' : 'FAILED'}`,
     html: `<p>Propitz end-to-end smoke test run: ${badge}</p>${summaryHtml}`,
-    attachments: report ? [report] : undefined,
+    attachments: attachments?.length ? attachments : undefined,
   })
 }
 

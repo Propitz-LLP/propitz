@@ -12,14 +12,17 @@
 // Run: npm run test:report   (or automatically via `npm test`)
 
 import { config as loadEnv } from 'dotenv'
-import { readFileSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { resolve, basename } from 'node:path'
 
 // Local runs read .env.test; on CI these come from the environment (GitHub
 // secrets) and the file is absent — dotenv silently no-ops, which is fine.
 loadEnv({ path: '.env.test' })
 
 const JUNIT_PATH = resolve('test-results/results.xml')
+// Screenshot proof captured by the specs via proof() — kept in sync with
+// SCREENSHOTS_DIR in e2e/helpers.ts.
+const SCREENSHOTS_DIR = resolve('screenshots')
 // TEST_REPORT_TO may list several recipients, separated by ',' or ';'. Resend
 // wants an array (it does not parse separators), so split and pass an array.
 const TO = (process.env.TEST_REPORT_TO || process.env.TEST_INVESTOR_EMAIL || '')
@@ -120,6 +123,52 @@ function renderSummary(cases: Case[]): string {
     </p>`
 }
 
+interface Shot {
+  name: string // human caption derived from the file stem
+  cid: string // Content-ID referenced by the inline <img>
+  filename: string
+  content: Buffer
+}
+
+// Collect the PNG proof screenshots, sorted for a stable order in the email.
+function collectScreenshots(): Shot[] {
+  if (!existsSync(SCREENSHOTS_DIR)) return []
+  return readdirSync(SCREENSHOTS_DIR)
+    .filter((f) => f.toLowerCase().endsWith('.png'))
+    .sort()
+    .map((f) => {
+      const stem = basename(f, '.png')
+      return {
+        name: stem.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        // A stable, unique CID per screenshot for the inline <img src="cid:…">.
+        cid: `shot-${stem}`,
+        filename: f,
+        content: readFileSync(resolve(SCREENSHOTS_DIR, f)),
+      }
+    })
+}
+
+// Render the screenshots as an inline gallery. Images reference the attachments
+// by Content-ID so they display in the email body (not just as downloads).
+function renderGallery(shots: Shot[]): string {
+  if (shots.length === 0) {
+    return `<p style="color:#888;font-size:12px;margin-top:16px;">No screenshot proof captured this run.</p>`
+  }
+  const cards = shots
+    .map(
+      (s) => `
+      <div style="margin:0 0 20px;">
+        <div style="font-family:sans-serif;font-size:12px;color:#555;margin-bottom:4px;">${esc(s.name)}</div>
+        <img src="cid:${s.cid}" alt="${esc(s.name)}"
+             style="max-width:100%;border:1px solid #ddd;border-radius:6px;display:block;" />
+      </div>`,
+    )
+    .join('')
+  return `
+    <h3 style="font-family:sans-serif;font-size:15px;margin:24px 0 12px;">Screenshot proof (${shots.length})</h3>
+    ${cards}`
+}
+
 async function main() {
   if (!existsSync(JUNIT_PATH)) {
     console.error(`\n  ✗ No results at ${JUNIT_PATH}. Run "npm run test:e2e" first.\n`)
@@ -129,11 +178,13 @@ async function main() {
   const xml = readFileSync(JUNIT_PATH, 'utf8')
   const cases = parseJUnit(xml)
   const passed = cases.every((c) => c.status !== 'failed') && cases.length > 0
-  const summaryHtml = renderSummary(cases)
+  const shots = collectScreenshots()
+  const summaryHtml = renderSummary(cases) + renderGallery(shots)
 
   if (DRY_RUN) {
     console.log('\n[dry-run] Recipient(s):', TO.length ? TO.join(', ') : '(none set)')
     console.log('[dry-run] Overall:', passed ? 'PASSED' : 'FAILED')
+    console.log(`[dry-run] Screenshots: ${shots.length}${shots.length ? ' (' + shots.map((s) => s.filename).join(', ') + ')' : ''}`)
     console.log('[dry-run] Summary HTML written to test-results/report-email.html\n')
     const { writeFileSync } = await import('node:fs')
     writeFileSync('test-results/report-email.html', summaryHtml)
@@ -154,11 +205,16 @@ async function main() {
   // Import the app's email module (compiled on the fly by tsx via the @ alias
   // resolved through tsconfig paths).
   const { sendTestReport } = await import('../src/lib/notifications/email')
-  await sendTestReport(TO, passed, summaryHtml, {
-    filename: 'results.xml',
-    content: Buffer.from(xml, 'utf8'),
-  })
-  console.log(`\n  ✓ Test report emailed to ${TO.join(', ')} (overall: ${passed ? 'PASSED' : 'FAILED'}).\n`)
+  // Screenshots first (inline, referenced by CID from the gallery), then the
+  // JUnit XML as the machine-readable record.
+  const attachments = [
+    ...shots.map((s) => ({ filename: s.filename, content: s.content, contentId: s.cid })),
+    { filename: 'results.xml', content: Buffer.from(xml, 'utf8') },
+  ]
+  await sendTestReport(TO, passed, summaryHtml, attachments)
+  console.log(
+    `\n  ✓ Test report emailed to ${TO.join(', ')} (overall: ${passed ? 'PASSED' : 'FAILED'}, ${shots.length} screenshot${shots.length === 1 ? '' : 's'}).\n`,
+  )
 }
 
 main().catch((e) => {
