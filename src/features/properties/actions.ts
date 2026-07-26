@@ -2,6 +2,7 @@
 
 import { put, del } from '@vercel/blob'
 import { requireAdmin, requireAuth } from '@/lib/auth'
+import { recordAudit } from '@/lib/audit'
 import { createProperty, updateProperty, getPropertyByIdAdmin, propertyHasActivity, deletePropertyAdmin } from '@/lib/db/properties'
 import { revalidatePath } from 'next/cache'
 import { propertySchema } from './schemas'
@@ -35,7 +36,7 @@ async function uploadImage(formData: FormData, slug: string): Promise<
 }
 
 export async function createPropertyAction(formData: FormData) {
-  await requireAdmin()
+  const admin = await requireAdmin()
 
   const uploaded = await uploadImage(formData, String(formData.get('slug') ?? 'property'))
   if (uploaded && 'error' in uploaded) return { error: uploaded.error }
@@ -47,12 +48,21 @@ export async function createPropertyAction(formData: FormData) {
 
   const property = await createProperty(parsed.data as Omit<Property, 'id' | 'createdAt' | 'updatedAt' | 'subscribedUnits'>)
 
+  await recordAudit({
+    actor: admin,
+    action: 'property.create',
+    entityType: 'property',
+    entityId: property.id,
+    before: null,
+    after: { name: property.name, slug: property.slug, status: property.status },
+  })
+
   revalidatePath('/admin/properties')
   return { success: true, name: property.name }
 }
 
 export async function updatePropertyAction(id: string, formData: FormData) {
-  await requireAdmin()
+  const admin = await requireAdmin()
 
   const uploaded = await uploadImage(formData, String(formData.get('slug') ?? 'property'))
   if (uploaded && 'error' in uploaded) return { error: uploaded.error }
@@ -73,20 +83,30 @@ export async function updatePropertyAction(id: string, formData: FormData) {
   const parsed = propertySchema.partial().safeParse(raw)
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
 
+  // Snapshot the pre-edit row for the audit trail (and to clean up the old blob).
+  const existing = await getPropertyByIdAdmin(id)
+
   // Replacing the image? Remove the old blob so it doesn't orphan.
-  if (uploaded) {
-    const existing = await getPropertyByIdAdmin(id)
-    if (existing?.imageUrl) await del(existing.imageUrl).catch(() => {})
-  }
+  if (uploaded && existing?.imageUrl) await del(existing.imageUrl).catch(() => {})
 
   await updateProperty(id, { ...parsed.data, ...clears } as Partial<Property>)
+
+  await recordAudit({
+    actor: admin,
+    action: 'property.update',
+    entityType: 'property',
+    entityId: id,
+    before: existing ? { name: existing.name, status: existing.status, unitPrice: existing.unitPrice } : null,
+    after: { changedFields: Object.keys({ ...parsed.data, ...clears }) },
+  })
+
   revalidatePath('/admin/properties')
   revalidatePath(`/admin/properties/${id}/edit`)
   return { success: true }
 }
 
 export async function deletePropertyAction(id: string) {
-  await requireAdmin()
+  const admin = await requireAdmin()
 
   const property = await getPropertyByIdAdmin(id)
   if (!property) return { error: 'Property not found' }
@@ -97,6 +117,15 @@ export async function deletePropertyAction(id: string) {
 
   if (property.imageUrl) await del(property.imageUrl).catch(() => {})
   await deletePropertyAdmin(id)
+
+  await recordAudit({
+    actor: admin,
+    action: 'property.delete',
+    entityType: 'property',
+    entityId: id,
+    before: { name: property.name, slug: property.slug, status: property.status },
+    after: null,
+  })
 
   revalidatePath('/admin/properties')
   revalidatePath('/properties')
@@ -117,8 +146,17 @@ export async function getPropertyDocumentUrlAction(documentId: string) {
 }
 
 export async function publishPropertyAction(id: string) {
-  await requireAdmin()
+  const admin = await requireAdmin()
+  const existing = await getPropertyByIdAdmin(id)
   await updateProperty(id, { status: 'Open' })
+  await recordAudit({
+    actor: admin,
+    action: 'property.publish',
+    entityType: 'property',
+    entityId: id,
+    before: { status: existing?.status ?? null },
+    after: { status: 'Open' },
+  })
   revalidatePath('/admin/properties')
   revalidatePath('/properties')
   return { success: true }

@@ -6,6 +6,7 @@ import { getOwnershipById } from '@/lib/db/ownerships'
 import { getPropertyByIdAdmin } from '@/lib/db/properties'
 import { getInvestorByIdAdmin } from '@/lib/db/investors'
 import { updateReservationStatus } from '@/lib/db/reservations'
+import { recordAudit } from '@/lib/audit'
 import { generateAndStoreCertificate } from '@/lib/storage/certificates'
 import { sendTransactionConfirmed, sendTransactionRejected } from '@/lib/notifications/email'
 import { paymentGateway } from '@/lib/payments/razorpay'
@@ -26,6 +27,15 @@ export async function recordPaymentReceivedAction(transactionId: string) {
   await updateTransactionStatus(transactionId, 'Payment Confirmed', admin.email)
   await updateTransactionStatus(transactionId, 'Admin Pending', admin.email)
 
+  await recordAudit({
+    actor: admin,
+    action: 'transaction.payment_received',
+    entityType: 'transaction',
+    entityId: transactionId,
+    before: { status: txn.status },
+    after: { status: 'Admin Pending', paymentMethod: txn.paymentMethod },
+  })
+
   revalidatePath('/admin/transactions')
   revalidatePath('/transactions')
   return { success: true }
@@ -44,9 +54,10 @@ export async function approveTransactionAction(transactionId: string) {
   if (!property || !investor) return { error: 'Property or investor not found' }
   if (!txn.units) return { error: 'Invalid unit count' }
 
-  // Status, ownership ledger, property counter, and reservation release all
-  // happen atomically in one DB transaction (approve_transaction_atomic RPC) —
-  // either every write lands or none does.
+  // Status, ownership ledger, property counter, reservation release, AND the
+  // audit entry all happen atomically in one DB transaction
+  // (approve_transaction_atomic RPC) — either every write lands or none does.
+  // No recordAudit call here: the audit row is written inside the RPC (S6-07).
   let ownershipId: string
   try {
     ({ ownershipId } = await approveTransactionAtomic(transactionId, admin.email))
@@ -83,6 +94,15 @@ export async function rejectTransactionAction(transactionId: string, reason: str
   ])
 
   await updateTransactionStatus(transactionId, 'Rejected', admin.email)
+
+  await recordAudit({
+    actor: admin,
+    action: 'transaction.reject',
+    entityType: 'transaction',
+    entityId: transactionId,
+    before: { status: txn.status },
+    after: { status: 'Rejected', reason, refunded: Boolean(txn.razorpayId) },
+  })
 
   // Return the held units to the pool
   if (txn.reservationId) await updateReservationStatus(txn.reservationId, 'released')

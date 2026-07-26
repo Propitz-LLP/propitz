@@ -12,6 +12,7 @@ import {
 } from '@/lib/db/investors'
 import { uploadKycDocument, getKycDocumentUrl } from '@/lib/storage/kyc-docs'
 import { getStorageProvider, storage } from '@/lib/storage'
+import { recordAudit } from '@/lib/audit'
 import { sendKycApproved, sendKycRejected, sendKycReceived } from '@/lib/notifications/email'
 import { revalidatePath } from 'next/cache'
 import { step1AccountSchema, step2IdentitySchema, step3BankSchema, KYC_DOC_TYPES } from './schemas'
@@ -156,10 +157,18 @@ export async function getKycDocumentUrlAction(storagePath: string) {
 }
 
 export async function markKycUnderReviewAction(investorId: string) {
-  await requireAdmin()
+  const admin = await requireAdmin()
   const investor = await getInvestorByIdAdmin(investorId)
   if (investor?.kycStatus === 'Submitted') {
     await updateInvestorKycStatus(investorId, 'Under Review')
+    await recordAudit({
+      actor: admin,
+      action: 'kyc.under_review',
+      entityType: 'investor',
+      entityId: investorId,
+      before: { kycStatus: investor.kycStatus },
+      after: { kycStatus: 'Under Review' },
+    })
     revalidatePath('/admin/kyc')
   }
   return { success: true }
@@ -168,9 +177,20 @@ export async function markKycUnderReviewAction(investorId: string) {
 export async function approveKycAction(investorId: string, submissionId: string) {
   const admin = await requireAdmin()
 
+  const prev = await getInvestorByIdAdmin(investorId)
+
   await updateInvestorKycStatus(investorId, 'Approved')
   await updateKycReview(submissionId, admin.email)
   await upsertKycDraft(investorId, { status: 'approved' })
+
+  await recordAudit({
+    actor: admin,
+    action: 'kyc.approve',
+    entityType: 'investor',
+    entityId: investorId,
+    before: { kycStatus: prev?.kycStatus ?? null },
+    after: { kycStatus: 'Approved', submissionId },
+  })
 
   const investor = await getInvestorByIdAdmin(investorId)
   if (investor) await sendKycApproved(investor.email, investor.name).catch(() => {})
@@ -189,9 +209,20 @@ export async function rejectKycAction(
     return { error: 'Rejection reason must be at least 10 characters' }
   }
 
+  const prev = await getInvestorByIdAdmin(investorId)
+
   await updateInvestorKycStatus(investorId, 'Rejected')
   await updateKycReview(submissionId, admin.email, reason.trim())
   await upsertKycDraft(investorId, { status: 'rejected' })
+
+  await recordAudit({
+    actor: admin,
+    action: 'kyc.reject',
+    entityType: 'investor',
+    entityId: investorId,
+    before: { kycStatus: prev?.kycStatus ?? null },
+    after: { kycStatus: 'Rejected', reason: reason.trim(), submissionId },
+  })
 
   const investor = await getInvestorByIdAdmin(investorId)
   if (investor) await sendKycRejected(investor.email, investor.name, reason.trim()).catch(() => {})
