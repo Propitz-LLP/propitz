@@ -7,6 +7,7 @@ import { getPropertyByIdAdmin } from '@/lib/db/properties'
 import { getInvestorByIdAdmin } from '@/lib/db/investors'
 import { updateReservationStatus } from '@/lib/db/reservations'
 import { recordAudit } from '@/lib/audit'
+import { recordNotification } from '@/lib/notifications/inapp'
 import { generateAndStoreCertificate } from '@/lib/storage/certificates'
 import { sendTransactionConfirmed, sendTransactionRejected } from '@/lib/notifications/email'
 import { paymentGateway } from '@/lib/payments/razorpay'
@@ -74,6 +75,13 @@ export async function approveTransactionAction(transactionId: string) {
   // roll back the approval, which has already been committed.
   await generateAndStoreCertificate(investor, property, ownership).catch(() => {})
   await sendTransactionConfirmed(investor.email, investor.name, property.name, txn.units, txn.gross).catch(() => {})
+  await recordNotification({
+    investorId: txn.investorId,
+    type: 'transaction.confirmed',
+    title: 'Investment confirmed',
+    body: `Your ${txn.units} unit${txn.units === 1 ? '' : 's'} in ${property.name} have been allocated. Your certificate is ready.`,
+    link: '/documents',
+  }).catch(() => {})
 
   revalidatePath('/admin/transactions')
   revalidatePath('/transactions')
@@ -115,6 +123,13 @@ export async function rejectTransactionAction(transactionId: string, reason: str
   if (investor && property) {
     await sendTransactionRejected(investor.email, investor.name, property.name, reason)
   }
+  await recordNotification({
+    investorId: txn.investorId,
+    type: 'transaction.rejected',
+    title: 'Investment not approved',
+    body: `Your investment${property ? ` in ${property.name}` : ''} was not approved: ${reason}${txn.razorpayId ? '. A refund has been initiated.' : '.'}`,
+    link: '/transactions',
+  }).catch(() => {})
 
   revalidatePath('/admin/transactions')
   return { success: true }

@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logoutAction } from '@/features/auth/actions'
-import type { AuthUser } from '@/types'
+import { NotificationBell } from '@/features/notifications/components/NotificationBell'
+import type { AuthUser, Notification } from '@/types'
 
 const INVESTOR_LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
@@ -12,7 +13,17 @@ const INVESTOR_LINKS = [
   { href: '/documents', label: 'Documents' },
 ]
 
-export function TopNav({ user, variant }: { user: AuthUser; variant: 'investor' | 'admin' }) {
+export function TopNav({
+  user,
+  variant,
+  notifications,
+  unreadCount = 0,
+}: {
+  user: AuthUser
+  variant: 'investor' | 'admin'
+  notifications?: Notification[]
+  unreadCount?: number
+}) {
   const pathname = usePathname()
 
   const initials = user.email
@@ -95,37 +106,30 @@ export function TopNav({ user, variant }: { user: AuthUser; variant: 'investor' 
 
       {/* Right side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {/* Notification bell */}
-        <button
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.08)',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'rgba(255,255,255,0.7)',
-            fontSize: 18,
-            position: 'relative',
-          }}
-          title="Notifications"
-        >
-          🔔
-          <span
+        {/* Notification bell — live centre for investors; static placeholder for admin */}
+        {notifications ? (
+          <NotificationBell notifications={notifications} unreadCount={unreadCount} />
+        ) : (
+          <button
             style={{
-              position: 'absolute',
-              top: 4,
-              right: 4,
-              width: 8,
-              height: 8,
-              background: 'var(--gold)',
+              width: 34,
+              height: 34,
               borderRadius: '50%',
+              background: 'rgba(255,255,255,0.08)',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'rgba(255,255,255,0.7)',
+              fontSize: 18,
+              position: 'relative',
             }}
-          />
-        </button>
+            title="Notifications"
+          >
+            🔔
+          </button>
+        )}
 
         {/* Avatar + dropdown */}
         <div style={{ position: 'relative' }}>

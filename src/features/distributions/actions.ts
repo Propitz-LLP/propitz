@@ -8,6 +8,8 @@ import { getInvestorByIdAdmin } from '@/lib/db/investors'
 import { calcDistributionFee } from '@/lib/payments/fees'
 import { config } from '@/lib/config'
 import { sendDistributionCredited } from '@/lib/notifications/email'
+import { recordNotification } from '@/lib/notifications/inapp'
+import { fmtRupees } from '@/lib/format'
 import { distributionSchema } from './schemas'
 import { revalidatePath } from 'next/cache'
 
@@ -116,6 +118,13 @@ export async function confirmDistributionAction(raw: {
       const gross = o.units * data.perUnit
       const net = gross - calcDistributionFee(gross, data.feePct)
       await sendDistributionCredited(investor.email, investor.name, property.name, net, data.period).catch(() => {})
+      await recordNotification({
+        investorId: o.investorId,
+        type: 'distribution.credited',
+        title: 'Distribution credited',
+        body: `${fmtRupees(net)} from ${property.name} (${data.period}) has been credited.`,
+        link: '/transactions',
+      }).catch(() => {})
     })
   )
 

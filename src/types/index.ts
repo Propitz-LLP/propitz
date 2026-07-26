@@ -4,6 +4,7 @@ export * from './transaction'
 export * from './investment'
 export * from './document'
 export * from './audit'
+export * from './notification'
 
 export type UserRole = 'investor' | 'admin'
 
