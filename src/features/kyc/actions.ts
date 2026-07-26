@@ -13,6 +13,7 @@ import {
 import { uploadKycDocument, getKycDocumentUrl } from '@/lib/storage/kyc-docs'
 import { getStorageProvider, storage } from '@/lib/storage'
 import { recordAudit } from '@/lib/audit'
+import { recordNotification } from '@/lib/notifications/inapp'
 import { sendKycApproved, sendKycRejected, sendKycReceived } from '@/lib/notifications/email'
 import { revalidatePath } from 'next/cache'
 import { step1AccountSchema, step2IdentitySchema, step3BankSchema, KYC_DOC_TYPES } from './schemas'
@@ -132,6 +133,13 @@ export async function submitKycAction() {
 
   const investor = await getInvestorById(user.id)
   if (investor) await sendKycReceived(investor.email, investor.name).catch(() => {})
+  await recordNotification({
+    investorId: user.id,
+    type: 'kyc.received',
+    title: 'KYC submitted',
+    body: 'We’ve received your KYC details and started the review. We’ll notify you once it’s complete.',
+    link: '/onboarding/kyc',
+  }).catch(() => {})
 
   revalidatePath('/onboarding/kyc')
   return { success: true }
@@ -194,6 +202,13 @@ export async function approveKycAction(investorId: string, submissionId: string)
 
   const investor = await getInvestorByIdAdmin(investorId)
   if (investor) await sendKycApproved(investor.email, investor.name).catch(() => {})
+  await recordNotification({
+    investorId,
+    type: 'kyc.approved',
+    title: 'KYC approved',
+    body: 'Your account is verified. You can now invest in properties.',
+    link: '/properties',
+  }).catch(() => {})
 
   revalidatePath('/admin/kyc')
   return { success: true }
@@ -226,6 +241,13 @@ export async function rejectKycAction(
 
   const investor = await getInvestorByIdAdmin(investorId)
   if (investor) await sendKycRejected(investor.email, investor.name, reason.trim()).catch(() => {})
+  await recordNotification({
+    investorId,
+    type: 'kyc.rejected',
+    title: 'KYC needs attention',
+    body: `Your KYC was not approved: ${reason.trim()}. Please review and resubmit.`,
+    link: '/onboarding/kyc',
+  }).catch(() => {})
 
   revalidatePath('/admin/kyc')
   return { success: true }
