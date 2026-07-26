@@ -3,6 +3,7 @@ export * from './property'
 export * from './transaction'
 export * from './investment'
 export * from './document'
+export * from './audit'
 
 export type UserRole = 'investor' | 'admin'
 
