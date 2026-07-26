@@ -143,3 +143,24 @@ export async function addValuationEntry(
   if (error) throw new Error(error.message)
   return data as ValuationHistory
 }
+
+// Revalue a property atomically: new price + valuation_history row + audit entry
+// in one DB transaction (record_valuation_atomic RPC). Returns the previous
+// price so the caller can report the % change and notify holders.
+export async function recordValuationAtomic(
+  propertyId: string,
+  newPrice: number,
+  quarter: string,
+  by: string,
+): Promise<{ valuationId: string; previousPrice: number }> {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase.rpc('record_valuation_atomic', {
+    p_property_id: propertyId,
+    p_new_price: newPrice,
+    p_quarter: quarter,
+    p_by: by,
+  })
+  if (error) throw new Error(error.message)
+  const row = (data as { valuationId: string; previousPrice: number }[])[0]
+  return { valuationId: row.valuationId, previousPrice: Number(row.previousPrice) }
+}

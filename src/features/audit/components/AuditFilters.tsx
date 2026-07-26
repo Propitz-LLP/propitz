@@ -6,7 +6,7 @@ import type { AuditAction, AuditEntityType } from '@/types'
 const ACTIONS: AuditAction[] = [
   'kyc.under_review', 'kyc.approve', 'kyc.reject',
   'transaction.payment_received', 'transaction.approve', 'transaction.reject',
-  'property.create', 'property.update', 'property.delete', 'property.publish',
+  'property.create', 'property.update', 'property.delete', 'property.publish', 'property.revalue',
   'distribution.run',
 ]
 const ENTITY_TYPES: AuditEntityType[] = ['investor', 'transaction', 'property', 'distribution']

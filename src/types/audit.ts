@@ -12,6 +12,7 @@ export type AuditAction =
   | 'property.update'
   | 'property.delete'
   | 'property.publish'
+  | 'property.revalue'
   | 'distribution.run'
 
 export type AuditEntityType =

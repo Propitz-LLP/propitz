@@ -3,9 +3,12 @@
 import { put, del } from '@vercel/blob'
 import { requireAdmin, requireAuth } from '@/lib/auth'
 import { recordAudit } from '@/lib/audit'
-import { createProperty, updateProperty, getPropertyByIdAdmin, propertyHasActivity, deletePropertyAdmin } from '@/lib/db/properties'
+import { recordNotification } from '@/lib/notifications/inapp'
+import { createProperty, updateProperty, getPropertyByIdAdmin, propertyHasActivity, deletePropertyAdmin, recordValuationAtomic } from '@/lib/db/properties'
+import { getOwnershipsByProperty } from '@/lib/db/ownerships'
+import { fmtRupees } from '@/lib/format'
 import { revalidatePath } from 'next/cache'
-import { propertySchema } from './schemas'
+import { propertySchema, valuationSchema } from './schemas'
 import type { Property } from '@/types'
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -160,4 +163,52 @@ export async function publishPropertyAction(id: string) {
   revalidatePath('/admin/properties')
   revalidatePath('/properties')
   return { success: true }
+}
+
+// Revalue a property: writes a new valuation_history row, updates the current
+// unit price, and audits the change — all atomically in record_valuation_atomic.
+// Because portfolio value is computed live from property.unitPrice, this IS the
+// cascade; the only follow-up is notifying holders (best-effort).
+export async function updateValuationAction(propertyId: string, formData: FormData) {
+  const admin = await requireAdmin()
+
+  const parsed = valuationSchema.safeParse(Object.fromEntries(formData.entries()))
+  if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
+
+  const property = await getPropertyByIdAdmin(propertyId)
+  if (!property) return { error: { _form: ['Property not found'] } }
+
+  const { previousPrice } = await recordValuationAtomic(
+    propertyId,
+    parsed.data.unitPrice,
+    parsed.data.quarter,
+    admin.email,
+  )
+
+  // Notify every current holder of the new valuation — best-effort, outside the
+  // committed price change (a missed bell entry must not fail the revaluation).
+  const changePct = previousPrice > 0
+    ? ((parsed.data.unitPrice - previousPrice) / previousPrice) * 100
+    : 0
+  const direction = parsed.data.unitPrice >= previousPrice ? 'up' : 'down'
+  const ownerships = await getOwnershipsByProperty(propertyId)
+  await Promise.all(
+    ownerships
+      .filter(o => o.units > 0)
+      .map(o =>
+        recordNotification({
+          investorId: o.investorId,
+          type: 'valuation.updated',
+          title: 'Valuation updated',
+          body: `${property.name} is now ${fmtRupees(parsed.data.unitPrice)}/unit (${direction} ${Math.abs(changePct).toFixed(1)}% from ${fmtRupees(previousPrice)}). Your portfolio value has been updated.`,
+          link: `/properties/${property.slug}`,
+        }).catch(() => {}),
+      ),
+  )
+
+  revalidatePath('/admin/properties')
+  revalidatePath(`/admin/properties/${property.slug}/edit`)
+  revalidatePath(`/properties/${property.slug}`)
+  revalidatePath('/dashboard')
+  return { success: true, previousPrice }
 }
