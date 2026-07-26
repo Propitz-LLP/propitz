@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/auth'
-import { getPropertyByIdAdmin } from '@/lib/db/properties'
+import { getPropertyByIdAdmin, getValuationHistory } from '@/lib/db/properties'
 import { PropertyForm } from '@/features/properties/admin/PropertyForm'
+import { ValuationPanel } from '@/features/properties/admin/ValuationPanel'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -12,6 +13,7 @@ export default async function EditPropertyPage({ params }: Props) {
   await requireAdmin()
   const property = await getPropertyByIdAdmin(slug)
   if (!property) notFound()
+  const valuationHistory = await getValuationHistory(property.id)
   return (
     <div className="max-w-[1100px] mx-auto px-8 py-8">
       <div className="mb-7">
@@ -19,6 +21,9 @@ export default async function EditPropertyPage({ params }: Props) {
         <p className="text-sm text-slate-400">{property.name}</p>
       </div>
       <PropertyForm property={property} />
+      <div style={{ marginTop: 24 }}>
+        <ValuationPanel property={property} history={valuationHistory} />
+      </div>
     </div>
   )
 }

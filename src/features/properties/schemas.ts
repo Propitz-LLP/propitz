@@ -29,3 +29,10 @@ export const propertySchema = z.object({
 })
 
 export type PropertyInput = z.infer<typeof propertySchema>
+
+export const valuationSchema = z.object({
+  unitPrice: z.coerce.number().positive('Enter a price above zero'),
+  quarter: z.string().min(1, 'Required'), // e.g. "Q2 FY26"
+})
+
+export type ValuationInput = z.infer<typeof valuationSchema>

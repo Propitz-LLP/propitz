@@ -8,6 +8,7 @@ export type NotificationType =
   | 'transaction.confirmed'
   | 'transaction.rejected'
   | 'distribution.credited'
+  | 'valuation.updated'
 
 export interface Notification {
   id: string
