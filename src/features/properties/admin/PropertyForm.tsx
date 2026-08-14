@@ -2,11 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { createPropertyAction, updatePropertyAction } from '../actions'
+import { createPropertyAction, updatePropertyAction, uploadPropertyDocumentAction } from '../actions'
 import { AREA_UNITS } from '../schemas'
 import { fmtRupees, toSlug, toWords } from '@/lib/format'
 import { Section, Field, rowStyle } from '@/components/ui/FormFields'
-import type { Property } from '@/types'
+import { PendingDocuments, type PendingDoc } from './PendingDocuments'
+import { DocumentsPanel } from './DocumentsPanel'
+import type { Property, InvestorDocument } from '@/types'
 import type { AreaUnit } from '../schemas'
 
 const STATUS_OPTS = [
@@ -25,7 +27,7 @@ function FieldError({ msg }: { msg?: string }) {
   return <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 3 }}>{msg}</div>
 }
 
-export function PropertyForm({ property }: { property?: Property }) {
+export function PropertyForm({ property, documents }: { property?: Property; documents?: InvestorDocument[] }) {
   const isEdit = !!property
 
   const [name,          setName]          = useState(property?.name ?? '')
@@ -51,6 +53,7 @@ export function PropertyForm({ property }: { property?: Property }) {
   const [totalArea,     setTotalArea]     = useState(property?.totalArea?.toString() ?? '')
   const [areaUnit,      setAreaUnit]      = useState<AreaUnit>(property?.areaUnit ?? 'sqft')
   const [status,        setStatus]        = useState(property?.status ?? 'Draft')
+  const [pendingDocs,   setPendingDocs]   = useState<PendingDoc[]>([])
   const [errors,        setErrors]        = useState<Record<string, string[]>>({})
   const [isPending,     startTransition]  = useTransition()
   const router = useRouter()
@@ -103,6 +106,25 @@ export function PropertyForm({ property }: { property?: Property }) {
         setErrors(result.error as Record<string, string[]>)
         window.scrollTo({ top: 0, behavior: 'smooth' })
       } else if (result?.success) {
+        // On create, upload any staged documents now that the property has an id.
+        // Each file is its own request, keeping every payload under the body limit.
+        const newId = (result as { id?: string }).id
+        if (!isEdit && newId && pendingDocs.length > 0) {
+          let failed = 0
+          for (const doc of pendingDocs) {
+            const dfd = new FormData()
+            dfd.set('label', doc.label)
+            dfd.set('file', doc.file)
+            const res = await uploadPropertyDocumentAction(newId, dfd)
+            if (res?.error) failed++
+          }
+          // If some uploads failed, land on the Edit screen so the admin can
+          // finish adding them rather than silently losing the files.
+          if (failed > 0) {
+            router.push(`/admin/properties/${newId}/edit`)
+            return
+          }
+        }
         const param = isEdit ? 'updated' : 'created'
         router.push(`/admin/properties?${param}=${encodeURIComponent(name)}`)
       }
@@ -339,6 +361,12 @@ export function PropertyForm({ property }: { property?: Property }) {
               <FieldError msg={err('description')} />
             </Field>
           </Section>
+
+          {isEdit ? (
+            <DocumentsPanel property={property!} documents={documents ?? []} />
+          ) : (
+            <PendingDocuments value={pendingDocs} onChange={setPendingDocs} />
+          )}
         </div>
 
         {/* ── RIGHT: live preview + publish ─────────────── */}

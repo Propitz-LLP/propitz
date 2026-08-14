@@ -36,3 +36,9 @@ export const valuationSchema = z.object({
 })
 
 export type ValuationInput = z.infer<typeof valuationSchema>
+
+export const propertyDocumentSchema = z.object({
+  label: z.string().min(1, 'Required'),
+})
+
+export type PropertyDocumentInput = z.infer<typeof propertyDocumentSchema>

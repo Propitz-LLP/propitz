@@ -6,10 +6,12 @@ import { recordAudit } from '@/lib/audit'
 import { recordNotification } from '@/lib/notifications/inapp'
 import { createProperty, updateProperty, getPropertyByIdAdmin, propertyHasActivity, deletePropertyAdmin, recordValuationAtomic } from '@/lib/db/properties'
 import { getOwnershipsByProperty } from '@/lib/db/ownerships'
+import { createDocument, getDocumentsByProperty } from '@/lib/db/documents'
+import { uploadPropertyDocument, deletePropertyDocumentFile } from '@/lib/storage/property-docs'
 import { fmtRupees } from '@/lib/format'
 import { revalidatePath } from 'next/cache'
-import { propertySchema, valuationSchema } from './schemas'
-import type { Property } from '@/types'
+import { propertySchema, valuationSchema, propertyDocumentSchema } from './schemas'
+import type { Property, DocumentType } from '@/types'
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const IMAGE_MAX_BYTES = 4 * 1024 * 1024 // 4 MB — stays under Vercel's request body limit
@@ -61,7 +63,7 @@ export async function createPropertyAction(formData: FormData) {
   })
 
   revalidatePath('/admin/properties')
-  return { success: true, name: property.name }
+  return { success: true, name: property.name, id: property.id }
 }
 
 export async function updatePropertyAction(id: string, formData: FormData) {
@@ -133,6 +135,96 @@ export async function deletePropertyAction(id: string) {
   revalidatePath('/admin/properties')
   revalidatePath('/properties')
   return { success: true, name: property.name }
+}
+
+const DOC_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+const DOC_MAX_BYTES = 4 * 1024 * 1024 // 4 MB — stays under Vercel's request body limit
+// Property documents no longer carry a user-chosen type; the label identifies them.
+// The `documents.type` column is NOT NULL, so persist a single catch-all value.
+const DEFAULT_PROPERTY_DOC_TYPE: DocumentType = 'Due Diligence Report'
+
+// Upload a property-level document (title report, due diligence, brochure) to the
+// private property-documents bucket and record it against the property. Version
+// auto-increments per document type.
+export async function uploadPropertyDocumentAction(propertyId: string, formData: FormData) {
+  const admin = await requireAdmin()
+
+  const property = await getPropertyByIdAdmin(propertyId)
+  if (!property) return { error: { _form: ['Property not found'] } }
+
+  const file = formData.get('file')
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: { file: ['Choose a file to upload'] } }
+  }
+  if (!DOC_TYPES.includes(file.type)) {
+    return { error: { file: ['Only PDF or image files (JPEG, PNG, WebP) are allowed'] } }
+  }
+  if (file.size > DOC_MAX_BYTES) {
+    return { error: { file: ['File must be under 4 MB'] } }
+  }
+
+  const parsed = propertyDocumentSchema.safeParse({
+    label: formData.get('label'),
+  })
+  if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
+
+  // Version = next in sequence for this property.
+  const existing = await getDocumentsByProperty(propertyId)
+  const version = existing.length + 1
+
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const storagePath = await uploadPropertyDocument(propertyId, DEFAULT_PROPERTY_DOC_TYPE, file.name, buffer, file.type)
+
+  const doc = await createDocument({
+    investorId: null,
+    propertyId,
+    type: DEFAULT_PROPERTY_DOC_TYPE,
+    label: parsed.data.label,
+    storagePath,
+    issuedAt: new Date().toISOString(),
+    version,
+  })
+
+  await recordAudit({
+    actor: admin,
+    action: 'document.upload',
+    entityType: 'document',
+    entityId: doc.id,
+    before: null,
+    after: { propertyId, type: doc.type, label: doc.label, version: doc.version },
+  })
+
+  revalidatePath(`/admin/properties/${propertyId}/edit`)
+  revalidatePath(`/properties/${property.slug}`)
+  return { success: true }
+}
+
+// Remove a property-level document — deletes the stored file and the row.
+export async function deletePropertyDocumentAction(documentId: string) {
+  const admin = await requireAdmin()
+
+  const { getDocumentById, deleteDocument } = await import('@/lib/db/documents')
+  const doc = await getDocumentById(documentId)
+  if (!doc || doc.investorId !== null || !doc.propertyId) {
+    return { error: 'Document not found' }
+  }
+
+  await deletePropertyDocumentFile(doc.storagePath).catch(() => {})
+  await deleteDocument(documentId)
+
+  await recordAudit({
+    actor: admin,
+    action: 'document.delete',
+    entityType: 'document',
+    entityId: documentId,
+    before: { propertyId: doc.propertyId, type: doc.type, label: doc.label, version: doc.version },
+    after: null,
+  })
+
+  const property = await getPropertyByIdAdmin(doc.propertyId)
+  revalidatePath(`/admin/properties/${doc.propertyId}/edit`)
+  if (property) revalidatePath(`/properties/${property.slug}`)
+  return { success: true }
 }
 
 // 15-min signed URL for a property-level document (due diligence, title report, …)

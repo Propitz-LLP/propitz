@@ -38,6 +38,12 @@ export async function createDocument(
   return data as InvestorDocument
 }
 
+export async function deleteDocument(id: string): Promise<void> {
+  const supabase = await createAdminClient()
+  const { error } = await supabase.from('documents').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
 export async function getDocumentById(id: string): Promise<InvestorDocument | null> {
   const supabase = await createClient()
   const { data, error } = await supabase
