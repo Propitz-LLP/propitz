@@ -28,9 +28,11 @@ function fileIcon(name: string): string {
 export function PendingDocuments({
   value,
   onChange,
+  embedded,
 }: {
   value: PendingDoc[]
   onChange: (docs: PendingDoc[]) => void
+  embedded?: boolean
 }) {
   const [label, setLabel] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -54,11 +56,13 @@ export function PendingDocuments({
   }
 
   return (
-    <div className="card" style={{ padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
-        <h2 className="font-display text-xl text-navy">Property Documents</h2>
-        <span className="badge badge-amber" style={{ flexShrink: 0 }}>🔒 Private · signed-URL access</span>
-      </div>
+    <div className={embedded ? undefined : 'card'} style={embedded ? undefined : { padding: 24 }}>
+      {!embedded && (
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+          <h2 className="font-display text-xl text-navy">Property Documents</h2>
+          <span className="badge badge-amber" style={{ flexShrink: 0 }}>🔒 Private · signed-URL access</span>
+        </div>
+      )}
       <p style={{ fontSize: 13, color: 'var(--slate-light)', marginBottom: 20 }}>
         Upload property documents for this listing. Added here, they upload automatically when you save the property.
       </p>

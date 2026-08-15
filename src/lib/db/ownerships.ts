@@ -23,6 +23,23 @@ export async function getOwnershipsByProperty(propertyId: string): Promise<Owner
   return (data ?? []) as Ownership[]
 }
 
+// Ownership row joined with the holder's display fields, for the admin
+// property view (who owns how many units).
+export interface OwnershipWithInvestor extends Ownership {
+  investors?: { name: string; email: string; initials: string } | null
+}
+
+export async function getOwnershipsWithInvestorByProperty(propertyId: string): Promise<OwnershipWithInvestor[]> {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('ownerships')
+    .select('*, investors(name, email, initials)')
+    .eq('propertyId', propertyId)
+    .order('units', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as OwnershipWithInvestor[]
+}
+
 export async function allocateUnits(
   investorId: string,
   propertyId: string,

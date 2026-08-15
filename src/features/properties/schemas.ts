@@ -42,3 +42,68 @@ export const propertyDocumentSchema = z.object({
 })
 
 export type PropertyDocumentInput = z.infer<typeof propertyDocumentSchema>
+
+// ── Draft / completeness ──────────────────────────────────────────────
+// A new listing can be parked as a Draft with only its identity filled in
+// (name + slug). Everything else is completed section-by-section later. The
+// `properties` table has no positive/NOT-NULL-without-default traps beyond
+// these two once the action supplies zero/empty fallbacks, so this is all the
+// gate a draft needs.
+export const draftPropertySchema = z.object({
+  name: z.string().min(1, 'Required'),
+  slug: z.string().min(1, 'Required').regex(/^[a-z0-9-]+$/, 'Lowercase letters, numbers and hyphens only'),
+})
+
+export type DraftPropertyInput = z.infer<typeof draftPropertySchema>
+
+// The accordion groups fields into sections; publishing (status → Open) is
+// blocked until every mandatory section is Complete. This is the single source
+// of truth for "what makes a section done", shared by the client (chips +
+// publish gate) and the server (publish guard).
+export type PropertySectionKey = 'basics' | 'financials' | 'returns' | 'description'
+export type SectionStatus = 'complete' | 'partial' | 'empty'
+
+export const PROPERTY_SECTION_ORDER: PropertySectionKey[] = ['basics', 'financials', 'returns', 'description']
+
+export interface PropertyCompletenessValues {
+  name?: string | null
+  slug?: string | null
+  city?: string | null
+  district?: string | null
+  state?: string | null
+  assetType?: string | null
+  description?: string | null
+  totalValuation?: number | null
+  totalUnits?: number | null
+  unitPrice?: number | null
+  minInvestmentUnits?: number | null
+  holdingPeriod?: string | null
+  lockInPeriod?: string | null
+}
+
+export const SECTION_REQUIRED: Record<PropertySectionKey, (keyof PropertyCompletenessValues)[]> = {
+  basics: ['name', 'slug', 'city', 'district', 'state', 'assetType'],
+  financials: ['totalValuation', 'totalUnits', 'unitPrice', 'minInvestmentUnits'],
+  returns: ['holdingPeriod', 'lockInPeriod'],
+  description: ['description'],
+}
+
+// A field counts as filled when a string is non-blank or a number is > 0
+// (zero valuation/units is the empty state for our numeric fields).
+function isFilled(v: unknown): boolean {
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0
+  if (typeof v === 'string') return v.trim().length > 0
+  return v != null
+}
+
+export function sectionStatus(key: PropertySectionKey, values: PropertyCompletenessValues): SectionStatus {
+  const fields = SECTION_REQUIRED[key]
+  const done = fields.filter(f => isFilled(values[f])).length
+  if (done === fields.length) return 'complete'
+  if (done === 0) return 'empty'
+  return 'partial'
+}
+
+export function isPropertyComplete(values: PropertyCompletenessValues): boolean {
+  return PROPERTY_SECTION_ORDER.every(k => sectionStatus(k, values) === 'complete')
+}

@@ -16,6 +16,7 @@ export type AuditAction =
   | 'document.upload'
   | 'document.delete'
   | 'distribution.run'
+  | 'ownership.allocate'
 
 export type AuditEntityType =
   | 'investor'
@@ -23,6 +24,7 @@ export type AuditEntityType =
   | 'property'
   | 'document'
   | 'distribution'
+  | 'ownership'
 
 export interface AuditLog {
   id: string
