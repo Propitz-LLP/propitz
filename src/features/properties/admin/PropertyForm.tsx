@@ -1,13 +1,39 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
-import { createPropertyAction, updatePropertyAction } from '../actions'
-import { AREA_UNITS } from '../schemas'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { updatePropertyAction, createPropertyAction, uploadPropertyDocumentAction } from '../actions'
+import {
+  PROPERTY_SECTION_ORDER,
+  sectionStatus,
+  isPropertyComplete,
+  type PropertyCompletenessValues,
+  type PropertySectionKey,
+} from '../schemas'
 import { fmtRupees, toSlug, toWords } from '@/lib/format'
-import { Section, Field, rowStyle } from '@/components/ui/FormFields'
-import type { Property } from '@/types'
+import { AccordionSection } from './AccordionSection'
+import { PropertyFormProvider, type PropertyFormApi, type SeqKey } from './sections/PropertyFormContext'
+import { FieldError, selectStyle } from './sections/shared'
+import { BasicsSection } from './sections/BasicsSection'
+import { FinancialsSection } from './sections/FinancialsSection'
+import { ReturnsSection } from './sections/ReturnsSection'
+import { DescriptionSection } from './sections/DescriptionSection'
+import { DocumentsSection } from './sections/DocumentsSection'
+import { InvestorsSection } from './sections/InvestorsSection'
+import type { OwnershipRow } from './sections/PropertyFormContext'
+import type { PendingDoc } from './PendingDocuments'
+import type { Property, InvestorDocument, Investor } from '@/types'
 import type { AreaUnit } from '../schemas'
+
+const SECTION_LABEL: Record<PropertySectionKey, string> = {
+  basics: 'Basics',
+  financials: 'Financial Structure',
+  returns: 'Projected Returns',
+  description: 'Description',
+}
+
+// Documents and Investors are optional sections tracked alongside the four mandatory ones.
+const TRACKED_TOTAL = PROPERTY_SECTION_ORDER.length + 2
 
 const STATUS_OPTS = [
   { value: 'Draft',  label: 'Draft — not visible to investors' },
@@ -15,18 +41,24 @@ const STATUS_OPTS = [
   { value: 'Closed', label: 'Closed — no new investments' },
 ]
 
-const selectStyle: React.CSSProperties = {
-  width: '100%', padding: '10px 14px', border: '1px solid var(--border-strong)',
-  borderRadius: 8, fontSize: 14, color: 'var(--navy)', background: '#fff',
-}
-
-function FieldError({ msg }: { msg?: string }) {
-  if (!msg) return null
-  return <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 3 }}>{msg}</div>
-}
-
-export function PropertyForm({ property }: { property?: Property }) {
+export function PropertyForm({
+  property,
+  documents,
+  investors = [],
+  ownerships = [],
+  feeRatePct = 0,
+  gstRatePct = 0,
+}: {
+  property?: Property
+  documents?: InvestorDocument[]
+  investors?: Investor[]
+  ownerships?: OwnershipRow[]
+  feeRatePct?: number
+  gstRatePct?: number
+}) {
   const isEdit = !!property
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [name,          setName]          = useState(property?.name ?? '')
   const [slug,          setSlug]          = useState(property?.slug ?? '')
@@ -50,10 +82,58 @@ export function PropertyForm({ property }: { property?: Property }) {
   const [imagePreview,  setImagePreview]  = useState<string | null>(property?.imageUrl ?? null)
   const [totalArea,     setTotalArea]     = useState(property?.totalArea?.toString() ?? '')
   const [areaUnit,      setAreaUnit]      = useState<AreaUnit>(property?.areaUnit ?? 'sqft')
-  const [status,        setStatus]        = useState(property?.status ?? 'Draft')
+  const [status,        setStatus]        = useState<Property['status']>(property?.status ?? 'Draft')
+  const [pendingDocs,   setPendingDocs]   = useState<PendingDoc[]>([])
   const [errors,        setErrors]        = useState<Record<string, string[]>>({})
+  const [savedNote,     setSavedNote]     = useState<string | null>(searchParams.get('created') ? 'Draft saved — continue below.' : null)
   const [isPending,     startTransition]  = useTransition()
-  const router = useRouter()
+
+  // ── live completeness (four mandatory sections) ──────────────────────
+  const values: PropertyCompletenessValues = {
+    name, slug, city, district, state, assetType, description,
+    totalValuation: parseFloat(totalVal) || 0,
+    totalUnits: parseFloat(totalUnits) || 0,
+    unitPrice: parseFloat(unitPrice) || 0,
+    minInvestmentUnits: parseFloat(minUnits) || 0,
+    holdingPeriod, lockInPeriod,
+  }
+  const secStatus = {
+    basics: sectionStatus('basics', values),
+    financials: sectionStatus('financials', values),
+    returns: sectionStatus('returns', values),
+    description: sectionStatus('description', values),
+  }
+  const complete = isPropertyComplete(values)
+  const mandatoryDone = PROPERTY_SECTION_ORDER.filter(k => secStatus[k] === 'complete').length
+  const incompleteLabels = PROPERTY_SECTION_ORDER.filter(k => secStatus[k] !== 'complete').map(k => SECTION_LABEL[k])
+
+  // Documents and Investors are optional but count toward the visible progress
+  // once a file is uploaded / an investor is allocated.
+  const docCount = isEdit ? (documents?.length ?? 0) : pendingDocs.length
+  const docsComplete = docCount > 0
+  const investorsComplete = ownerships.length > 0
+  const trackedDone = mandatoryDone + (docsComplete ? 1 : 0) + (investorsComplete ? 1 : 0)
+  const pct = Math.round((trackedDone / TRACKED_TOTAL) * 100)
+
+  // ── accordion open state (multi-open; first incomplete open by default) ─
+  const [openSet, setOpenSet] = useState<Record<string, boolean>>(() => {
+    const fromParam = searchParams.get('open')
+    if (fromParam) return { [fromParam]: true }
+    const init: PropertyCompletenessValues = {
+      name: property?.name, slug: property?.slug, city: property?.city, district: property?.district,
+      state: property?.state, assetType: property?.assetType, description: property?.description,
+      totalValuation: property?.totalValuation, totalUnits: property?.totalUnits,
+      unitPrice: property?.unitPrice, minInvestmentUnits: property?.minInvestmentUnits,
+      holdingPeriod: property?.holdingPeriod, lockInPeriod: property?.lockInPeriod,
+    }
+    const first = PROPERTY_SECTION_ORDER.find(k => sectionStatus(k, init) !== 'complete') ?? 'basics'
+    return { [first]: true }
+  })
+  const SECTIONS: SeqKey[] = ['basics', 'financials', 'returns', 'description', 'documents', 'investors']
+  const toggle = (key: string) => setOpenSet(s => ({ ...s, [key]: !s[key] }))
+  const allOpen = SECTIONS.every(k => openSet[k])
+  const toggleAll = () =>
+    setOpenSet(allOpen ? {} : Object.fromEntries(SECTIONS.map(k => [k, true])))
 
   function handleValuationChange(v: string) {
     setTotalVal(v)
@@ -77,10 +157,7 @@ export function PropertyForm({ property }: { property?: Property }) {
     setImagePreview(file ? URL.createObjectURL(file) : property?.imageUrl ?? null)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setErrors({})
-
+  function buildFormData(targetStatus: Property['status']): FormData {
     const fd = new FormData()
     fd.set('name', name); fd.set('slug', slug); fd.set('city', city)
     fd.set('district', district); fd.set('state', state); fd.set('pinCode', pinCode)
@@ -92,8 +169,21 @@ export function PropertyForm({ property }: { property?: Property }) {
     if (totalArea) { fd.set('totalArea', totalArea); fd.set('areaUnit', areaUnit) }
     else if (isEdit) fd.set('totalArea', '') // empty on edit = clear the stored area
     if (imageFile) fd.set('image', imageFile)
-    fd.set('coverEmoji', emoji); fd.set('status', status)
+    fd.set('coverEmoji', emoji); fd.set('status', targetStatus)
     fd.set('coverGradient', 'linear-gradient(135deg,#1B3057,#2A4A7A)')
+    return fd
+  }
+
+  // Persist the current form as a Draft. `advanceTo` opens the next section after
+  // an in-place save; `finish` leaves the flow for the properties list. On create
+  // the property is minted first and we redirect to the resumable edit screen.
+  function persist(advanceTo: SeqKey | null, finish = false) {
+    setErrors({})
+    setSavedNote(null)
+    // Persist whatever status the admin selected in the Publication Status card.
+    // On create this is ignored (createProperty always mints a Draft); publishing
+    // to Open is server-gated on completeness.
+    const fd = buildFormData(status)
 
     startTransition(async () => {
       const result = isEdit
@@ -102,10 +192,37 @@ export function PropertyForm({ property }: { property?: Property }) {
       if (result?.error) {
         setErrors(result.error as Record<string, string[]>)
         window.scrollTo({ top: 0, behavior: 'smooth' })
-      } else if (result?.success) {
-        const param = isEdit ? 'updated' : 'created'
-        router.push(`/admin/properties?${param}=${encodeURIComponent(name)}`)
+        return
       }
+      if (!result?.success) return
+
+      const newId = (result as { id?: string }).id
+      if (!isEdit && newId) {
+        for (const doc of pendingDocs) {
+          const dfd = new FormData()
+          dfd.set('label', doc.label)
+          dfd.set('file', doc.file)
+          await uploadPropertyDocumentAction(newId, dfd)
+        }
+        if (finish) {
+          router.push(`/admin/properties?created=${encodeURIComponent(name)}`)
+          return
+        }
+        const q = new URLSearchParams({ created: '1' })
+        if (advanceTo) q.set('open', advanceTo)
+        router.push(`/admin/properties/${newId}/edit?${q.toString()}`)
+        return
+      }
+
+      if (finish) {
+        router.push(`/admin/properties?updated=${encodeURIComponent(name)}`)
+        return
+      }
+      if (advanceTo) {
+        setOpenSet({ [advanceTo]: true })
+        setTimeout(() => document.getElementById(`section-${advanceTo}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+      }
+      setSavedNote('Changes saved.')
     })
   }
 
@@ -118,329 +235,226 @@ export function PropertyForm({ property }: { property?: Property }) {
   const valuationWords   = previewValuation > 0 ? toWords(previewValuation) : null
   const unitPriceWords   = previewUnitPrice > 0 ? toWords(previewUnitPrice) : null
 
+  // ── section summaries (shown on collapsed headers) ────────────────────
+  const basicsSummary = name
+    ? [name, assetType || null, city || null].filter(Boolean).join(' · ')
+    : 'Not started'
+  const financialsSummary = previewValuation > 0 && parseFloat(totalUnits) > 0
+    ? `${fmtRupees(previewValuation)} · ${parseFloat(totalUnits).toLocaleString('en-IN')} units`
+    : 'Not started'
+  const returnsSummary = holdingPeriod || lockInPeriod
+    ? [holdingPeriod && `Hold ${holdingPeriod}`, lockInPeriod && `Lock-in ${lockInPeriod}`].filter(Boolean).join(' · ')
+    : 'Not started'
+  const trimmedDesc = description.trim()
+  const descriptionSummary = trimmedDesc
+    ? trimmedDesc.slice(0, 64) + (trimmedDesc.length > 64 ? '…' : '')
+    : 'Not started'
+  const documentsSummary = docCount > 0
+    ? `${docCount} document${docCount > 1 ? 's' : ''}`
+    : '0 uploaded — optional'
+  const investorCount = ownerships.length
+  const investorsSummary = !isEdit
+    ? 'Available after the property is saved'
+    : investorCount > 0
+      ? `${investorCount} investor${investorCount > 1 ? 's' : ''} allocated`
+      : 'No investors assigned — optional'
+
+  const statusPill = status === 'Open'
+    ? { label: 'Open', cls: 'badge-green' }
+    : complete
+      ? { label: 'Ready to publish', cls: 'badge-green' }
+      : { label: 'Draft', cls: 'badge-amber' }
+
+  const api: PropertyFormApi = {
+    isEdit, property, documents,
+    investors, ownerships, feeRatePct, gstRatePct,
+    name, slug, city, district, state, pinCode, assetType, description,
+    totalVal, totalUnits, unitPrice, minUnits, yieldPct, growthPct, holdingPeriod, lockInPeriod,
+    emoji, totalArea, areaUnit, imageFile, imagePreview, pendingDocs,
+    setSlug, setSlugEdited, setCity, setDistrict, setState, setPinCode, setAssetType, setDescription,
+    setUnitPrice, setMinUnits, setYieldPct, setGrowthPct, setHoldingPeriod, setLockInPeriod,
+    setEmoji, setTotalArea, setAreaUnit, setPendingDocs,
+    handleNameChange, handleValuationChange, handleTotalUnitsChange, handleImageChange,
+    areaWords, valuationWords, unitPriceWords, previewUnitPrice, previewMinUnits,
+    err, saving: isPending, persist,
+  }
+
   return (
-    <form onSubmit={handleSubmit}>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, alignItems: 'start' }}>
+    <PropertyFormProvider value={api}>
+      <form onSubmit={e => { e.preventDefault(); persist(null) }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20, alignItems: 'start' }}>
 
-        {/* ── LEFT: form fields ─────────────────────────── */}
-        <div>
-          <Section title="Basic Information">
-            <Field label="Property Name" required>
-              <input className="form-input" value={name} onChange={e => handleNameChange(e.target.value)} placeholder="e.g. Brigade Metropolis Phase 2" />
-              <FieldError msg={err('name')} />
-            </Field>
-
-            <Field label="URL Slug" required hint="Auto-generated from name. Lowercase letters, numbers and hyphens only.">
-              <input
-                className="form-input"
-                value={slug}
-                onChange={e => { setSlug(e.target.value); setSlugEdited(true) }}
-                placeholder="e.g. brigade-metropolis-phase-2"
-              />
-              <FieldError msg={err('slug')} />
-            </Field>
-
-            <Field label="Town / City / Village" required>
-              <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Koramangala, Bengaluru" />
-            </Field>
-
-            <div style={rowStyle}>
-              <Field label="District" required>
-                <input className="form-input" value={district} onChange={e => setDistrict(e.target.value)} placeholder="e.g. Bengaluru Urban" />
-              </Field>
-              <Field label="State" required>
-                <input className="form-input" value={state} onChange={e => setState(e.target.value)} placeholder="e.g. Karnataka" />
-              </Field>
-            </div>
-
-            <div style={rowStyle}>
-              <Field label="Pin Code">
-                <input className="form-input" value={pinCode} onChange={e => setPinCode(e.target.value)} placeholder="560001" maxLength={6} />
-              </Field>
-              <Field label="Asset Type" required>
-                <select value={assetType} onChange={e => setAssetType(e.target.value)} style={selectStyle}>
-                  <option value="">Select type…</option>
-                  <option value="Commercial">Commercial</option>
-                  <option value="Residential">Residential</option>
-                  <option value="Land">Land</option>
-                </select>
-                <FieldError msg={err('assetType')} />
-              </Field>
-            </div>
-
-            <Field label="Total Area">
-              <div style={{ display: 'flex', gap: 10 }}>
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <input
-                    className="form-input"
-                    type="number"
-                    value={totalArea}
-                    onChange={e => setTotalArea(e.target.value)}
-                    placeholder="e.g. 2400"
-                    min="0"
-                    step="any"
-                  />
-                  {areaWords && (
-                    <div style={{ fontSize: 11, color: 'var(--slate-light)', paddingLeft: 2, fontStyle: 'italic' }}>
-                      {areaWords}
-                    </div>
-                  )}
+          {/* ── LEFT: progress header + accordion ─────────────── */}
+          <div>
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--slate-light)' }}>
+                    Sections
+                  </span>
+                  <span className={`badge ${statusPill.cls}`} style={{ fontSize: 11 }}>{statusPill.label}</span>
                 </div>
-                <select
-                  value={areaUnit}
-                  onChange={e => setAreaUnit(e.target.value as AreaUnit)}
-                  style={{ ...selectStyle, width: 'auto', minWidth: 110 }}
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  style={{
+                    fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', background: '#fff',
+                    border: '1px solid var(--border-strong)', borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
+                  }}
                 >
-                  {AREA_UNITS.map(u => (
-                    <option key={u} value={u}>
-                      {u === 'sqft' ? 'sq ft' : u === 'sqm' ? 'sq m' : u === 'sqyd' ? 'sq yd' : u.charAt(0).toUpperCase() + u.slice(1)}
+                  {allOpen ? 'Collapse all' : 'Expand all'}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, height: 6, background: 'var(--surface-2)', borderRadius: 99, overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', width: `${pct}%`,
+                    background: complete ? 'var(--green)' : 'var(--gold)', transition: 'width 0.25s',
+                  }} />
+                </div>
+                <span style={{ fontSize: 12.5, color: 'var(--slate-light)', minWidth: 142, textAlign: 'right' }}>
+                  {trackedDone} of {TRACKED_TOTAL} sections complete
+                </span>
+              </div>
+
+              <div style={{ fontSize: 12, marginTop: 8, color: complete ? 'var(--green)' : 'var(--slate)' }}>
+                {complete
+                  ? '✓ All required sections complete. Documents are optional.'
+                  : `🔒 Complete ${incompleteLabels.join(', ')} before this can be published.`}
+              </div>
+
+              {err('status') && <FieldError msg={err('status')} />}
+              {savedNote && (
+                <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 6, fontWeight: 600 }}>{savedNote}</div>
+              )}
+            </div>
+
+            <AccordionSection index={1} anchorId="section-basics" title={SECTION_LABEL.basics}
+              status={secStatus.basics} summary={basicsSummary} open={!!openSet.basics} onToggle={() => toggle('basics')}>
+              <BasicsSection />
+            </AccordionSection>
+
+            <AccordionSection index={2} anchorId="section-financials" title={SECTION_LABEL.financials}
+              status={secStatus.financials} summary={financialsSummary} open={!!openSet.financials} onToggle={() => toggle('financials')}>
+              <FinancialsSection />
+            </AccordionSection>
+
+            <AccordionSection index={3} anchorId="section-returns" title={SECTION_LABEL.returns} badge="Displayed with disclaimer"
+              status={secStatus.returns} summary={returnsSummary} open={!!openSet.returns} onToggle={() => toggle('returns')}>
+              <ReturnsSection />
+            </AccordionSection>
+
+            <AccordionSection index={4} anchorId="section-description" title={SECTION_LABEL.description}
+              status={secStatus.description} summary={descriptionSummary} open={!!openSet.description} onToggle={() => toggle('description')}>
+              <DescriptionSection />
+            </AccordionSection>
+
+            <AccordionSection index={5} anchorId="section-documents" title="Property Documents" badge="🔒 Private"
+              status={docsComplete ? 'complete' : 'optional'} summary={documentsSummary} open={!!openSet.documents} onToggle={() => toggle('documents')}>
+              <DocumentsSection />
+            </AccordionSection>
+
+            <AccordionSection index={6} anchorId="section-investors" title="Investors"
+              status={investorCount > 0 ? 'complete' : 'optional'} summary={investorsSummary}
+              open={!!openSet.investors} onToggle={() => toggle('investors')}
+              locked={!isEdit} lockedNote="Save the property first, then assign investors here.">
+              <InvestorsSection />
+            </AccordionSection>
+          </div>
+
+          {/* ── RIGHT: live preview + publish ─────────────────── */}
+          <div style={{ position: 'sticky', top: 80, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            <div className="card" style={{ overflow: 'hidden' }}>
+              <div style={{
+                height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 40, background: 'linear-gradient(135deg,#1B3057,#2A4A7A)', position: 'relative',
+              }}>
+                {imagePreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={imagePreview} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span>{emoji || '🏢'}</span>
+                )}
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0, padding: '6px 12px',
+                  background: 'linear-gradient(transparent,rgba(15,30,56,0.85))',
+                  fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 500,
+                }}>
+                  {assetType || 'Type'} · {city || 'City'}
+                </div>
+              </div>
+
+              <div style={{ padding: '14px 16px' }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>
+                  {name || 'Property Name'}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--slate-light)', marginBottom: 10 }}>
+                  📍 {city || 'Location'}{district ? `, ${district}` : ''}{state ? `, ${state}` : ''}
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+                  {[
+                    { label: 'Unit Price',   value: previewUnitPrice > 0 ? `₹${previewUnitPrice.toLocaleString('en-IN')}` : '—' },
+                    { label: 'Min. Invest.', value: previewUnitPrice > 0 && previewMinUnits > 0 ? fmtRupees(previewUnitPrice * previewMinUnits) : '—' },
+                    { label: 'Rental Yield', value: yieldPct ? `${yieldPct}% p.a.` : '—', color: 'var(--green)' },
+                    { label: 'Cap. Growth',  value: growthPct ? `${growthPct}% p.a.` : '—', color: 'var(--navy-mid)' },
+                    { label: 'Total Value',  value: previewValuation > 0 ? fmtRupees(previewValuation) : '—', span: 2 },
+                  ].map(s => (
+                    <div key={s.label} style={{ gridColumn: s.span ? `span ${s.span}` : undefined }}>
+                      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--slate-light)', marginBottom: 2 }}>
+                        {s.label}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: s.color ?? 'var(--navy)' }}>
+                        {s.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span className={`badge ${status === 'Open' ? 'badge-green' : status === 'Draft' ? 'badge-amber' : 'badge-red'}`}>
+                    {status}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--slate-light)' }}>Live preview</span>
+                </div>
+              </div>
+            </div>
+
+            {/* publication status */}
+            <div className="card">
+              <div className="card-header"><span className="card-title">Publication Status</span></div>
+              <div className="card-body">
+                <div className="form-label">Status</div>
+                <select
+                  value={status}
+                  onChange={e => setStatus(e.target.value as Property['status'])}
+                  style={selectStyle}
+                >
+                  {STATUS_OPTS.map(o => (
+                    <option key={o.value} value={o.value} disabled={o.value === 'Open' && !complete}>
+                      {o.label}{o.value === 'Open' && !complete ? ' (complete all sections first)' : ''}
                     </option>
                   ))}
                 </select>
-              </div>
-            </Field>
-
-            <Field label="Display Emoji" hint="Single emoji shown on property cards.">
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <span style={{
-                  fontSize: 28, width: 48, height: 48, background: 'var(--surface-2)',
-                  borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  border: '1px solid var(--border)', flexShrink: 0,
-                }}>
-                  {emoji || '🏢'}
-                </span>
-                <input className="form-input" value={emoji} onChange={e => setEmoji(e.target.value)} maxLength={4} style={{ flex: 1 }} />
-              </div>
-            </Field>
-
-            <Field label="Property Image" hint="Optional. JPEG, PNG or WebP up to 4 MB. Shown on property cards instead of the emoji.">
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                {imagePreview && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={imagePreview}
-                      alt="Property preview"
-                      style={{
-                        width: 96, height: 64, objectFit: 'cover', borderRadius: 8,
-                        border: '1px solid var(--border)',
-                      }}
-                    />
-                    {!imageFile && property?.imageUrl && (
-                      <a
-                        href={property.imageUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontSize: 11, color: 'var(--navy-mid)', textAlign: 'center' }}
-                      >
-                        View full size ↗
-                      </a>
-                    )}
-                  </div>
-                )}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={e => handleImageChange(e.target.files?.[0] ?? null)}
-                    style={{ fontSize: 13 }}
-                  />
-                  {imageFile && (
-                    <button
-                      type="button"
-                      onClick={() => handleImageChange(null)}
-                      style={{
-                        alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0,
-                        fontSize: 12, color: 'var(--red)', cursor: 'pointer', textDecoration: 'underline',
-                      }}
-                    >
-                      Remove selected image
-                    </button>
-                  )}
+                <div className="form-hint" style={{ marginTop: 8 }}>
+                  Properties start as Draft and require legal team sign-off before going Open.
                 </div>
+                {err('status') && <FieldError msg={err('status')} />}
               </div>
-              <FieldError msg={err('image')} />
-            </Field>
-          </Section>
-
-          <Section title="Financial Structure">
-            <div style={rowStyle}>
-              <Field label="Total Valuation (₹)" required hint="Full amount in rupees (e.g. 12Cr = 120000000)">
-                <input
-                  className="form-input" type="number" value={totalVal}
-                  onChange={e => handleValuationChange(e.target.value)}
-                  placeholder="e.g. 120000000"
-                />
-                {valuationWords && <div style={{ fontSize: 11, color: 'var(--slate-light)', paddingLeft: 2, fontStyle: 'italic', marginTop: 4 }}>{valuationWords}</div>}
-                <FieldError msg={err('totalValuation')} />
-              </Field>
-              <Field label="Total Units" required>
-                <input
-                  className="form-input" type="number" value={totalUnits}
-                  onChange={e => handleTotalUnitsChange(e.target.value)}
-                  placeholder="e.g. 1000" min="1"
-                />
-              </Field>
             </div>
 
-            <div style={rowStyle}>
-              <Field label="Unit Price (₹)" required hint="Auto-calculated from valuation ÷ units">
-                <input
-                  className="form-input" type="number" value={unitPrice}
-                  onChange={e => setUnitPrice(e.target.value)}
-                  placeholder="Auto-calculated"
-                />
-                {unitPriceWords && <div style={{ fontSize: 11, color: 'var(--slate-light)', paddingLeft: 2, fontStyle: 'italic', marginTop: 4 }}>{unitPriceWords}</div>}
-              </Field>
-              <Field
-                label="Min. Investment Units" required
-                hint={previewUnitPrice > 0 && previewMinUnits > 0
-                  ? `Min. investment: ₹${(previewUnitPrice * previewMinUnits).toLocaleString('en-IN')}`
-                  : 'Number of units an investor must buy minimum'}
-              >
-                <input
-                  className="form-input" type="number" value={minUnits}
-                  onChange={e => setMinUnits(e.target.value)}
-                  placeholder="e.g. 10" min="1"
-                />
-              </Field>
-            </div>
-          </Section>
-
-          <Section title="Projected Returns" badge="Displayed with disclaimer">
-            <div style={rowStyle}>
-              <Field label="Rental Yield (% p.a.)" hint="Annual income from rentals as % of investment">
-                <input className="form-input" type="number" step="0.1" value={yieldPct} onChange={e => setYieldPct(e.target.value)} placeholder="e.g. 9.5" />
-              </Field>
-              <Field label="Capital Growth (% p.a.)" hint="Expected annual property value appreciation">
-                <input className="form-input" type="number" step="0.1" value={growthPct} onChange={e => setGrowthPct(e.target.value)} placeholder="e.g. 8.0" />
-              </Field>
-            </div>
-            <div style={rowStyle}>
-              <Field label="Holding Period" hint="Expected investment duration before exit">
-                <input className="form-input" value={holdingPeriod} onChange={e => setHoldingPeriod(e.target.value)} placeholder="e.g. 5–7 years" />
-              </Field>
-              <Field label="Lock-in Period" hint="Minimum hold before resale is permitted">
-                <input className="form-input" value={lockInPeriod} onChange={e => setLockInPeriod(e.target.value)} placeholder="e.g. 3 years" />
-              </Field>
-            </div>
-          </Section>
-
-          <Section title="Description">
-            <Field label="Property Description" required>
-              <textarea
-                className="form-input"
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                rows={5}
-                placeholder="Describe the property, tenant profile, WALE, location highlights…"
-                style={{ resize: 'vertical' }}
-              />
-              <FieldError msg={err('description')} />
-            </Field>
-          </Section>
-        </div>
-
-        {/* ── RIGHT: live preview + publish ─────────────── */}
-        <div style={{ position: 'sticky', top: 80, display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          <div className="card" style={{ overflow: 'hidden' }}>
             <div style={{
-              height: 110, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 40, background: 'linear-gradient(135deg,#1B3057,#2A4A7A)', position: 'relative',
+              padding: '10px 12px', background: 'var(--amber-bg)',
+              border: '1px solid rgba(183,121,31,0.2)',
+              borderRadius: 8, fontSize: 11.5, color: 'var(--slate)', lineHeight: 1.6,
             }}>
-              {imagePreview ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={imagePreview} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <span>{emoji || '🏢'}</span>
-              )}
-              <div style={{
-                position: 'absolute', bottom: 0, left: 0, right: 0, padding: '6px 12px',
-                background: 'linear-gradient(transparent,rgba(15,30,56,0.85))',
-                fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 500,
-              }}>
-                {assetType || 'Type'} · {city || 'City'}
-              </div>
+              ⚠️ Projected yields and financial details must be reviewed by the legal team before setting status to Open.
             </div>
-
-            <div style={{ padding: '14px 16px' }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>
-                {name || 'Property Name'}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--slate-light)', marginBottom: 10 }}>
-                📍 {city || 'Location'}{district ? `, ${district}` : ''}{state ? `, ${state}` : ''}
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
-                {[
-                  { label: 'Unit Price',   value: previewUnitPrice > 0 ? `₹${previewUnitPrice.toLocaleString('en-IN')}` : '—' },
-                  { label: 'Min. Invest.', value: previewUnitPrice > 0 && previewMinUnits > 0 ? fmtRupees(previewUnitPrice * previewMinUnits) : '—' },
-                  { label: 'Rental Yield', value: yieldPct ? `${yieldPct}% p.a.` : '—', color: 'var(--green)' },
-                  { label: 'Cap. Growth',  value: growthPct ? `${growthPct}% p.a.` : '—', color: 'var(--navy-mid)' },
-                  { label: 'Total Value',  value: previewValuation > 0 ? fmtRupees(previewValuation) : '—', span: 2 },
-                ].map(s => (
-                  <div key={s.label} style={{ gridColumn: s.span ? `span ${s.span}` : undefined }}>
-                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--slate-light)', marginBottom: 2 }}>
-                      {s.label}
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: s.color ?? 'var(--navy)' }}>
-                      {s.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span className={`badge ${status === 'Open' ? 'badge-green' : status === 'Draft' ? 'badge-amber' : 'badge-red'}`}>
-                  {status}
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--slate-light)' }}>Live preview</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header"><span className="card-title">Publication Status</span></div>
-            <div className="card-body">
-              <div className="form-label">Status</div>
-              <select
-                value={status}
-                onChange={e => setStatus(e.target.value as 'Draft' | 'Open' | 'Fully Subscribed' | 'Closed')}
-                style={selectStyle}
-              >
-                {STATUS_OPTS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <div className="form-hint" style={{ marginTop: 8 }}>
-                Properties start as Draft and require legal team sign-off before going Open.
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isPending}
-            style={{
-              width: '100%', padding: '13px', borderRadius: 8, fontSize: 14.5, fontWeight: 600,
-              background: isPending ? 'var(--navy-mid)' : 'var(--gold)',
-              color: 'var(--navy)', border: 'none', cursor: isPending ? 'not-allowed' : 'pointer',
-              opacity: isPending ? 0.8 : 1,
-            }}
-          >
-            {isPending ? 'Saving…' : isEdit ? 'Save Changes →' : 'Save Property →'}
-          </button>
-
-          <div style={{
-            padding: '10px 12px', background: 'var(--amber-bg)',
-            border: '1px solid rgba(183,121,31,0.2)',
-            borderRadius: 8, fontSize: 11.5, color: 'var(--slate)', lineHeight: 1.6,
-          }}>
-            ⚠️ Projected yields and financial details must be reviewed by the legal team before setting status to Open.
           </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </PropertyFormProvider>
   )
 }

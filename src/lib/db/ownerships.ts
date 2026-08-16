@@ -23,6 +23,23 @@ export async function getOwnershipsByProperty(propertyId: string): Promise<Owner
   return (data ?? []) as Ownership[]
 }
 
+// Ownership row joined with the holder's display fields, for the admin
+// property view (who owns how many units).
+export interface OwnershipWithInvestor extends Ownership {
+  investors?: { name: string; email: string; initials: string } | null
+}
+
+export async function getOwnershipsWithInvestorByProperty(propertyId: string): Promise<OwnershipWithInvestor[]> {
+  const supabase = await createAdminClient()
+  const { data, error } = await supabase
+    .from('ownerships')
+    .select('*, investors(name, email, initials)')
+    .eq('propertyId', propertyId)
+    .order('units', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as OwnershipWithInvestor[]
+}
+
 export async function allocateUnits(
   investorId: string,
   propertyId: string,
@@ -63,6 +80,41 @@ export async function allocateUnits(
     .single()
   if (error) throw new Error(error.message)
   return data as Ownership
+}
+
+// Remove an investor's holding in a property and return the freed units to the
+// pool (decrement subscribedUnits). Returns the number of units released, or 0
+// if there was no such ownership.
+export async function removeOwnership(investorId: string, propertyId: string): Promise<number> {
+  const supabase = await createAdminClient()
+
+  const { data: existing } = await supabase
+    .from('ownerships')
+    .select('id, units')
+    .eq('investorId', investorId)
+    .eq('propertyId', propertyId)
+    .single()
+  if (!existing) return 0
+
+  const { error: delError } = await supabase.from('ownerships').delete().eq('id', existing.id)
+  if (delError) throw new Error(delError.message)
+
+  const { data: property } = await supabase
+    .from('properties')
+    .select('subscribedUnits')
+    .eq('id', propertyId)
+    .single()
+  if (property) {
+    await supabase
+      .from('properties')
+      .update({
+        subscribedUnits: Math.max(0, (property.subscribedUnits ?? 0) - existing.units),
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('id', propertyId)
+  }
+
+  return existing.units
 }
 
 export async function getOwnershipById(id: string): Promise<Ownership | null> {

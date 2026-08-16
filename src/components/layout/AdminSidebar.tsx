@@ -28,6 +28,7 @@ const SECTIONS: SidebarSection[] = [
       { href: '/admin/transactions', icon: '⏳', label: 'Transactions' },
       { href: '/admin/kyc', icon: '👥', label: 'KYC Review' },
       { href: '/admin/properties', icon: '🏢', label: 'Properties' },
+      { href: '/admin/investors', icon: '👤', label: 'Investors' },
       { href: '/admin/distributions', icon: '💰', label: 'Distributions' },
       { href: '/admin/documents', icon: '📁', label: 'Documents' },
     ],

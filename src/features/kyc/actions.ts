@@ -22,19 +22,31 @@ import type { KycDocType } from '@/types'
 const DOC_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
 const DOC_MAX_BYTES = 5 * 1024 * 1024
 
-// Wizard is only writable before submission or after a rejection
-async function requireEditableKyc() {
+// Resolves whose KYC is being edited and authorizes it. With a targetInvestorId
+// an admin edits that investor's KYC on their behalf; otherwise the signed-in
+// investor edits their own. Either way the record must still be editable
+// (Not Started / Rejected). Returns the effective investorId used for all writes.
+async function resolveEditableKyc(targetInvestorId?: string) {
+  if (targetInvestorId) {
+    await requireAdmin()
+    const investor = await getInvestorByIdAdmin(targetInvestorId)
+    if (!investor) return { investorId: targetInvestorId, error: 'Investor profile not found' }
+    if (investor.kycStatus !== 'Not Started' && investor.kycStatus !== 'Rejected') {
+      return { investorId: targetInvestorId, error: 'KYC is already submitted and cannot be edited' }
+    }
+    return { investorId: targetInvestorId, investor, error: null }
+  }
   const user = await requireAuth()
   const investor = await getInvestorById(user.id)
-  if (!investor) return { user, error: 'Investor profile not found' }
+  if (!investor) return { investorId: user.id, error: 'Investor profile not found' }
   if (investor.kycStatus !== 'Not Started' && investor.kycStatus !== 'Rejected') {
-    return { user, error: 'KYC is already submitted and cannot be edited' }
+    return { investorId: user.id, error: 'KYC is already submitted and cannot be edited' }
   }
-  return { user, investor, error: null }
+  return { investorId: user.id, investor, error: null }
 }
 
-export async function saveKycStepAction(step: 1 | 2 | 3, formData: FormData) {
-  const { user, error } = await requireEditableKyc()
+export async function saveKycStepAction(step: 1 | 2 | 3, formData: FormData, targetInvestorId?: string) {
+  const { investorId, error } = await resolveEditableKyc(targetInvestorId)
   if (error) return { error: { _form: [error] } }
 
   const raw = Object.fromEntries(formData.entries())
@@ -48,9 +60,9 @@ export async function saveKycStepAction(step: 1 | 2 | 3, formData: FormData) {
     const { error: dbError } = await supabase
       .from('investors')
       .update({ phone: parsed.data.phone, type: parsed.data.investorType })
-      .eq('id', user.id)
+      .eq('id', investorId)
     if (dbError) return { error: { _form: [dbError.message] } }
-    await upsertKycDraft(user.id, { currentStep: 2 })
+    await upsertKycDraft(investorId, { currentStep: 2 })
     return { success: true }
   }
 
@@ -58,7 +70,7 @@ export async function saveKycStepAction(step: 1 | 2 | 3, formData: FormData) {
     const parsed = step2IdentitySchema.safeParse(raw)
     if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
     const { aadhaar, ...rest } = parsed.data
-    await upsertKycDraft(user.id, {
+    await upsertKycDraft(investorId, {
       ...rest,
       // UIDAI: never persist the full Aadhaar — last 4 digits only
       aadhaarMasked: `XXXX XXXX ${aadhaar.slice(-4)}`,
@@ -70,12 +82,12 @@ export async function saveKycStepAction(step: 1 | 2 | 3, formData: FormData) {
   const parsed = step3BankSchema.safeParse(raw)
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
   const { accountNumberConfirm: _confirm, accountNumber, ...bank } = parsed.data
-  await upsertKycDraft(user.id, { ...bank, bankAccount: accountNumber, currentStep: 4 })
+  await upsertKycDraft(investorId, { ...bank, bankAccount: accountNumber, currentStep: 4 })
   return { success: true }
 }
 
-export async function uploadKycDocumentAction(formData: FormData) {
-  const { user, error } = await requireEditableKyc()
+export async function uploadKycDocumentAction(formData: FormData, targetInvestorId?: string) {
+  const { investorId, error } = await resolveEditableKyc(targetInvestorId)
   if (error) return { error }
 
   const docType = String(formData.get('docType')) as KycDocType
@@ -85,12 +97,12 @@ export async function uploadKycDocumentAction(formData: FormData) {
   if (!DOC_MIME_TYPES.includes(file.type)) return { error: 'Only PDF, JPG or PNG files are accepted' }
   if (file.size > DOC_MAX_BYTES) return { error: 'File must be under 5 MB' }
 
-  const submission = await getKycSubmissionByInvestor(user.id)
-    ?? await upsertKycDraft(user.id, { currentStep: 4 })
+  const submission = await getKycSubmissionByInvestor(investorId)
+    ?? await upsertKycDraft(investorId, { currentStep: 4 })
 
   const filename = `${Date.now()}_${file.name.replace(/[^\w.-]+/g, '_')}`
   const buffer = Buffer.from(await file.arrayBuffer())
-  const path = await uploadKycDocument(user.id, submission.id, docType, buffer, filename, file.type)
+  const path = await uploadKycDocument(investorId, submission.id, docType, buffer, filename, file.type)
 
   // Replace: remove the previous file for this doc type from storage
   const previous = submission.documents?.find(d => d.type === docType)
@@ -108,11 +120,11 @@ export async function uploadKycDocumentAction(formData: FormData) {
   return { success: true, document: doc }
 }
 
-export async function submitKycAction() {
-  const { user, error } = await requireEditableKyc()
-  if (error) return { error }
+export async function submitKycAction(targetInvestorId?: string) {
+  const { investorId, investor, error } = await resolveEditableKyc(targetInvestorId)
+  if (error || !investor) return { error: error ?? 'Investor profile not found' }
 
-  const submission = await getKycSubmissionByInvestor(user.id)
+  const submission = await getKycSubmissionByInvestor(investorId)
   if (!submission) return { error: 'Complete the KYC form before submitting' }
 
   const missingFields = !submission.fullLegalName || !submission.pan || !submission.aadhaarMasked
@@ -123,18 +135,17 @@ export async function submitKycAction() {
   const missingDocs = KYC_DOC_TYPES.filter(t => !uploadedTypes.has(t))
   if (missingDocs.length > 0) return { error: 'All four documents must be uploaded before submitting.' }
 
-  await upsertKycDraft(user.id, {
+  await upsertKycDraft(investorId, {
     status: 'pending',
     submittedAt: new Date().toISOString(),
     currentStep: 5,
     notes: undefined,
   })
-  await updateInvestorKycStatus(user.id, 'Submitted')
+  await updateInvestorKycStatus(investorId, 'Submitted')
 
-  const investor = await getInvestorById(user.id)
-  if (investor) await sendKycReceived(investor.email, investor.name).catch(() => {})
+  await sendKycReceived(investor.email, investor.name).catch(() => {})
   await recordNotification({
-    investorId: user.id,
+    investorId,
     type: 'kyc.received',
     title: 'KYC submitted',
     body: 'We’ve received your KYC details and started the review. We’ll notify you once it’s complete.',
@@ -142,6 +153,8 @@ export async function submitKycAction() {
   }).catch(() => {})
 
   revalidatePath('/onboarding/kyc')
+  revalidatePath('/admin/investors')
+  revalidatePath('/admin/kyc')
   return { success: true }
 }
 

@@ -32,10 +32,14 @@ function Banner({ kind, children }: { kind: 'amber' | 'red'; children: React.Rea
   )
 }
 
-export function KycStepper({ investor, submission, showGateBanner }: {
+export function KycStepper({ investor, submission, showGateBanner, investorId, returnPath }: {
   investor: Investor
   submission: KycSubmission | null
   showGateBanner?: boolean
+  // Admin mode: when set, the wizard edits this investor's KYC (instead of the
+  // signed-in user's) and returns to `returnPath` after submitting.
+  investorId?: string
+  returnPath?: string
 }) {
   const isResubmit = investor.kycStatus === 'Rejected'
   const [step, setStep] = useState(submission?.currentStep ?? 1)
@@ -83,7 +87,7 @@ export function KycStepper({ investor, submission, showGateBanner }: {
     const fd = new FormData()
     Object.entries(fields).forEach(([k, v]) => fd.set(k, v))
     startTransition(async () => {
-      const result = await saveKycStepAction(stepNo, fd)
+      const result = await saveKycStepAction(stepNo, fd, investorId)
       if (result?.error) {
         if (typeof result.error === 'object' && '_form' in result.error) {
           setFormError((result.error as Record<string, string[]>)._form[0])
@@ -119,7 +123,7 @@ export function KycStepper({ investor, submission, showGateBanner }: {
     fd.set('docType', docType)
     fd.set('file', file)
     startTransition(async () => {
-      const result = await uploadKycDocumentAction(fd)
+      const result = await uploadKycDocumentAction(fd, investorId)
       setUploading(null)
       if (result?.error) {
         setFormError(typeof result.error === 'string' ? result.error : 'Upload failed')
@@ -132,11 +136,13 @@ export function KycStepper({ investor, submission, showGateBanner }: {
   function submit() {
     setFormError(null)
     startTransition(async () => {
-      const result = await submitKycAction()
+      const result = await submitKycAction(investorId)
       if (result?.error) {
         setFormError(typeof result.error === 'string' ? result.error : 'Submission failed')
+      } else if (returnPath) {
+        router.push(returnPath) // admin flow — back to the investor list
       } else {
-        router.refresh() // server re-renders the page as the status tracker
+        router.refresh() // investor flow — server re-renders as the status tracker
       }
     })
   }

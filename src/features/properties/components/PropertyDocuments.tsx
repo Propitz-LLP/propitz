@@ -4,10 +4,6 @@ import { useState, useTransition } from 'react'
 import { getPropertyDocumentUrlAction } from '../actions'
 import type { InvestorDocument } from '@/types'
 
-function fmtSize(_doc: InvestorDocument): string | null {
-  return null // sizeBytes isn't stored on documents yet; label carries the info
-}
-
 export function PropertyDocuments({ documents }: { documents: InvestorDocument[] }) {
   const [opening, setOpening] = useState<string | null>(null)
   const [, startTransition] = useTransition()
@@ -47,9 +43,6 @@ export function PropertyDocuments({ documents }: { documents: InvestorDocument[]
                 <span style={{ fontSize: 22 }}>📄</span>
                 <div>
                   <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--navy)' }}>{doc.label}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--slate-light)' }}>
-                    {doc.type}{fmtSize(doc) ? ` · ${fmtSize(doc)}` : ''}
-                  </div>
                 </div>
               </div>
               <span style={{ fontSize: 12.5, color: 'var(--navy-mid)', fontWeight: 600 }}>

@@ -16,6 +16,12 @@ export const config = {
     env: optional('NODE_ENV', 'development'),
   },
 
+  // Opt-in capability flags. Off unless the env var is explicitly set to 'true'.
+  features: {
+    // Allows admins to hard-delete investors from the back office.
+    allowInvestorDelete: optional('ALLOW_INVESTOR_DELETE', 'false') === 'true',
+  },
+
   supabase: {
     url: optional('NEXT_PUBLIC_SUPABASE_URL'),
     // New key format (sb_publishable_xxx / sb_secret_xxx) — replaces legacy anon/service_role

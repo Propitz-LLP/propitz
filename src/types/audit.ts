@@ -13,13 +13,21 @@ export type AuditAction =
   | 'property.delete'
   | 'property.publish'
   | 'property.revalue'
+  | 'document.upload'
+  | 'document.delete'
   | 'distribution.run'
+  | 'investor.create'
+  | 'investor.delete'
+  | 'ownership.allocate'
+  | 'ownership.remove'
 
 export type AuditEntityType =
   | 'investor'
   | 'transaction'
   | 'property'
+  | 'document'
   | 'distribution'
+  | 'ownership'
 
 export interface AuditLog {
   id: string

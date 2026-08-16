@@ -36,9 +36,13 @@ export function PropertyTable({ properties }: { properties: Property[] }) {
 
   function handlePublish(id: string) {
     setPublishing(id)
+    setDeleteError(null)
     startTransition(async () => {
-      await publishPropertyAction(id)
+      const result = await publishPropertyAction(id)
       setPublishing(null)
+      if (result?.error) {
+        setDeleteError(typeof result.error === 'string' ? result.error : 'Could not publish this property.')
+      }
     })
   }
 
