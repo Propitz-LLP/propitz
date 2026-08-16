@@ -1,29 +1,18 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { usePropertyForm } from './PropertyFormContext'
-import { allocateUnitsToInvestorAction } from '@/features/investors/actions'
+import { allocateUnitsToInvestorAction, removeAllocationAction } from '@/features/investors/actions'
+import { AddInvestorDialog } from '@/features/investors/components/AddInvestorDialog'
 import { fmtRupees } from '@/lib/format'
+import { selectStyle } from './shared'
 
-const selectStyle: React.CSSProperties = {
-  width: '100%', padding: '10px 14px', border: '1px solid var(--border-strong)',
-  borderRadius: 8, fontSize: 14, color: 'var(--navy)', background: '#fff',
-}
 const stepBtn = (disabled: boolean): React.CSSProperties => ({
   width: 38, height: 38, borderRadius: 8, fontSize: 18, fontWeight: 700,
   border: '1px solid var(--border-strong)', background: '#fff', color: 'var(--navy)',
   cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.4 : 1,
 })
-
-function AddInvestorLink({ label = '+ Invite investor' }: { label?: string }) {
-  return (
-    <Link href="/admin/investors/new" style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-mid)', textDecoration: 'underline' }}>
-      {label}
-    </Link>
-  )
-}
 
 export function InvestorsSection() {
   const f = usePropertyForm()
@@ -33,6 +22,9 @@ export function InvestorsSection() {
   const [investorId, setInvestorId] = useState('')
   const [units, setUnits] = useState(1)
   const [error, setError] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   // Only exists once the property is saved — allocations need a property id.
@@ -71,6 +63,21 @@ export function InvestorsSection() {
     })
   }
 
+  function remove(ownerId: string) {
+    setError(null)
+    setRemoving(ownerId)
+    startTransition(async () => {
+      const res = await removeAllocationAction(property!.id, ownerId)
+      setRemoving(null)
+      setConfirmRemove(null)
+      if (res?.error) {
+        setError(typeof res.error === 'string' ? res.error : 'Could not remove allocation')
+        return
+      }
+      router.refresh()
+    })
+  }
+
   const row = (label: string, value: string, bold?: boolean) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: bold ? 14.5 : 13 }}>
       <span style={{ color: bold ? 'var(--navy)' : 'var(--slate-light)', fontWeight: bold ? 700 : 400 }}>{label}</span>
@@ -89,6 +96,7 @@ export function InvestorsSection() {
               <th className="num">Units</th>
               <th className="num">Acquired price</th>
               <th className="num">Value</th>
+              <th className="num"></th>
             </tr>
           </thead>
           <tbody>
@@ -103,6 +111,31 @@ export function InvestorsSection() {
                 <td className="num">{o.units.toLocaleString('en-IN')}</td>
                 <td className="num">₹{o.acquiredPrice.toLocaleString('en-IN')}</td>
                 <td className="num">{fmtRupees(o.units * property.unitPrice)}</td>
+                <td className="num">
+                  {confirmRemove === o.investorId ? (
+                    <span style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button
+                        type="button" onClick={() => remove(o.investorId)} disabled={removing === o.investorId}
+                        style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, background: 'var(--red)', color: '#fff', border: 'none', cursor: 'pointer', opacity: removing === o.investorId ? 0.7 : 1 }}
+                      >
+                        {removing === o.investorId ? 'Removing…' : 'Confirm'}
+                      </button>
+                      <button
+                        type="button" onClick={() => setConfirmRemove(null)} disabled={removing === o.investorId}
+                        style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border-strong)', color: 'var(--navy)', background: '#fff', cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button" onClick={() => { setConfirmRemove(o.investorId); setError(null) }}
+                      style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid rgba(190,60,60,0.35)', color: 'var(--red)', background: '#fff', cursor: 'pointer' }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -115,18 +148,19 @@ export function InvestorsSection() {
           Assign investor
         </div>
 
-        {f.approvedInvestors.length === 0 ? (
+        {f.investors.length === 0 ? (
           <div style={{ fontSize: 13, color: 'var(--slate-light)' }}>
-            <p style={{ marginTop: 0, marginBottom: 12 }}>No KYC-approved investors are available to allocate.</p>
-            <Link
-              href="/admin/investors/new"
+            <p style={{ marginTop: 0, marginBottom: 12 }}>No investors yet.</p>
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
               style={{
                 display: 'inline-block', padding: '10px 18px', borderRadius: 8, fontSize: 13.5, fontWeight: 600,
-                background: 'var(--gold)', color: 'var(--navy)', textDecoration: 'none',
+                background: 'var(--gold)', color: 'var(--navy)', border: 'none', cursor: 'pointer',
               }}
             >
-              + Invite Investor
-            </Link>
+              + Add Investor
+            </button>
           </div>
         ) : available <= 0 ? (
           <p style={{ fontSize: 13, color: 'var(--slate-light)', margin: 0 }}>All units are allocated — nothing left to assign.</p>
@@ -136,10 +170,18 @@ export function InvestorsSection() {
               <div className="form-label" style={{ marginBottom: 6 }}>Investor</div>
               <select value={investorId} onChange={e => setInvestorId(e.target.value)} style={selectStyle}>
                 <option value="">Select an investor…</option>
-                {f.approvedInvestors.map(inv => (
-                  <option key={inv.id} value={inv.id}>{inv.name} · {inv.email}</option>
-                ))}
+                {f.investors.map(inv => {
+                  const approved = inv.kycStatus === 'Approved'
+                  return (
+                    <option key={inv.id} value={inv.id} disabled={!approved}>
+                      {inv.name} · {inv.email}{approved ? '' : ` · KYC ${inv.kycStatus}`}
+                    </option>
+                  )
+                })}
               </select>
+              <div style={{ fontSize: 11.5, color: 'var(--slate-light)', marginTop: 4 }}>
+                Only KYC-approved investors can be allocated units.
+              </div>
             </div>
 
             <div className="form-label" style={{ marginBottom: 6 }}>Number of Units</div>
@@ -169,7 +211,13 @@ export function InvestorsSection() {
             {error && <div style={{ color: 'var(--red)', fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <AddInvestorLink />
+              <button
+                type="button"
+                onClick={() => setAddOpen(true)}
+                style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy-mid)', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', padding: 0 }}
+              >
+                + Add investor
+              </button>
               <button
                 type="button"
                 onClick={assign}
@@ -186,6 +234,8 @@ export function InvestorsSection() {
           </>
         )}
       </div>
+
+      <AddInvestorDialog open={addOpen} onClose={() => setAddOpen(false)} onCreated={() => router.refresh()} />
     </div>
   )
 }

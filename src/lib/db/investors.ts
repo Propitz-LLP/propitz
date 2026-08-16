@@ -39,18 +39,6 @@ export async function getInvestorByIdAdmin(id: string): Promise<Investor | null>
   return data as Investor
 }
 
-// KYC-approved investors only — the pool admin may allocate property units to.
-export async function listApprovedInvestors(): Promise<Investor[]> {
-  const supabase = await createAdminClient()
-  const { data, error } = await supabase
-    .from('investors')
-    .select('*')
-    .eq('kycStatus', 'Approved')
-    .order('name', { ascending: true })
-  if (error) throw new Error(error.message)
-  return (data ?? []) as Investor[]
-}
-
 export async function createInvestor(investor: Omit<Investor, 'createdAt'>): Promise<Investor> {
   const supabase = await createAdminClient()
   const { data, error } = await supabase

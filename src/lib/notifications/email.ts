@@ -85,17 +85,6 @@ export async function sendKycReceived(to: string, name: string): Promise<void> {
   })
 }
 
-export async function sendInvestorInvite(to: string, signupUrl: string): Promise<void> {
-  await provider.send({
-    to,
-    subject: 'You’re invited to invest on Propitz',
-    html: `<p>Hello,</p>
-<p>You’ve been invited to create your investor account on Propitz. Click below to get started — you’ll set your own password, confirm your email, and complete a quick KYC.</p>
-<p><a href="${signupUrl}" style="display:inline-block;padding:10px 18px;background:#1B3057;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Create your account →</a></p>
-<p>Or paste this link into your browser:<br>${signupUrl}</p>`,
-  })
-}
-
 export async function sendKycApproved(to: string, name: string): Promise<void> {
   await provider.send({
     to,

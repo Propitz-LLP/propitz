@@ -82,6 +82,41 @@ export async function allocateUnits(
   return data as Ownership
 }
 
+// Remove an investor's holding in a property and return the freed units to the
+// pool (decrement subscribedUnits). Returns the number of units released, or 0
+// if there was no such ownership.
+export async function removeOwnership(investorId: string, propertyId: string): Promise<number> {
+  const supabase = await createAdminClient()
+
+  const { data: existing } = await supabase
+    .from('ownerships')
+    .select('id, units')
+    .eq('investorId', investorId)
+    .eq('propertyId', propertyId)
+    .single()
+  if (!existing) return 0
+
+  const { error: delError } = await supabase.from('ownerships').delete().eq('id', existing.id)
+  if (delError) throw new Error(delError.message)
+
+  const { data: property } = await supabase
+    .from('properties')
+    .select('subscribedUnits')
+    .eq('id', propertyId)
+    .single()
+  if (property) {
+    await supabase
+      .from('properties')
+      .update({
+        subscribedUnits: Math.max(0, (property.subscribedUnits ?? 0) - existing.units),
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('id', propertyId)
+  }
+
+  return existing.units
+}
+
 export async function getOwnershipById(id: string): Promise<Ownership | null> {
   const supabase = await createAdminClient()
   const { data, error } = await supabase

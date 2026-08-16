@@ -2,34 +2,113 @@
 
 import { requireAdmin } from '@/lib/auth'
 import { config } from '@/lib/config'
-import { sendInvestorInvite } from '@/lib/notifications/email'
+import { createAdminClient } from '@/lib/supabase/server'
 import { recordAudit } from '@/lib/audit'
-import { getInvestorByIdAdmin } from '@/lib/db/investors'
+import { createInvestor, getInvestorByIdAdmin } from '@/lib/db/investors'
 import { getPropertyByIdAdmin, reserveUnits } from '@/lib/db/properties'
-import { allocateUnits } from '@/lib/db/ownerships'
+import { allocateUnits, removeOwnership } from '@/lib/db/ownerships'
 import { revalidatePath } from 'next/cache'
-import { inviteSchema, allocationSchema } from './schemas'
+import { investorSchema, allocationSchema } from './schemas'
 
-// Build the self-service signup link (Create account screen, pre-filled email).
-function signupUrlFor(email: string): string {
-  return `${config.app.url}/login?mode=signup&email=${encodeURIComponent(email)}`
+function initialsFrom(name: string, email: string): string {
+  const fromName = name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2)
+  return (fromName || email.slice(0, 2)).toUpperCase()
 }
 
-// "Add Investor" doesn't create an account — onboarding is self-service. The
-// admin invites a prospect by email; the investor then signs up, confirms their
-// email, and completes KYC themselves. Returns the signup link so the UI can
-// also offer a copy-to-share fallback. Email send is best-effort.
-export async function inviteInvestorAction(formData: FormData) {
-  await requireAdmin()
+// Admin adds an investor with minimal details (name, email, phone). Creates the
+// login identity (auth.users, which investors.id FKs to) plus the profile row.
+// KYC starts as "Not Started"; KYC + bank details are added later. The temp
+// password is never shown — the investor sets their own via "Forgot password".
+export async function createInvestorAction(formData: FormData) {
+  const admin = await requireAdmin()
 
-  const parsed = inviteSchema.safeParse(Object.fromEntries(formData.entries()))
+  const parsed = investorSchema.safeParse(Object.fromEntries(formData.entries()))
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors }
-  const { email } = parsed.data
+  const { name, email, phone } = parsed.data
 
-  const signupUrl = signupUrlFor(email)
-  await sendInvestorInvite(email, signupUrl).catch(() => {})
+  const supabase = await createAdminClient()
+  const tempPassword = `${crypto.randomUUID()}Aa1!`
+  const { data, error } = await supabase.auth.admin.createUser({
+    email,
+    password: tempPassword,
+    email_confirm: true,
+  })
+  if (error || !data.user) {
+    const msg = (error?.message ?? '').toLowerCase()
+    if (msg.includes('already') || msg.includes('registered') || msg.includes('exists')) {
+      return { error: { email: ['An account with this email already exists'] } }
+    }
+    return { error: { _form: [error?.message ?? 'Could not create the investor'] } }
+  }
 
-  return { success: true, signupUrl }
+  try {
+    await createInvestor({
+      id: data.user.id,
+      name: name.trim(),
+      email,
+      phone,
+      type: 'Individual - Resident Indian',
+      kycStatus: 'Not Started',
+      initials: initialsFrom(name, email),
+    })
+  } catch {
+    // Don't orphan a login if the profile insert fails — roll the auth user back.
+    await supabase.auth.admin.deleteUser(data.user.id).catch(() => {})
+    return { error: { _form: ['Could not create the investor profile'] } }
+  }
+
+  await recordAudit({
+    actor: admin,
+    action: 'investor.create',
+    entityType: 'investor',
+    entityId: data.user.id,
+    before: null,
+    after: { name: name.trim(), email },
+  })
+
+  revalidatePath('/admin/investors')
+  return { success: true, id: data.user.id, name: name.trim() }
+}
+
+// Hard-delete an investor — gated behind ALLOW_INVESTOR_DELETE. Blocked when the
+// investor has holdings or transactions (financial records must be preserved).
+// Deleting the auth user cascades the investor row (FK on delete cascade).
+export async function deleteInvestorAction(id: string) {
+  const admin = await requireAdmin()
+  if (!config.features.allowInvestorDelete) {
+    return { error: 'Investor deletion is disabled.' }
+  }
+
+  const investor = await getInvestorByIdAdmin(id)
+  if (!investor) return { error: 'Investor not found' }
+
+  const supabase = await createAdminClient()
+  const [ownerships, transactions] = await Promise.all([
+    supabase.from('ownerships').select('id', { count: 'exact', head: true }).eq('investorId', id),
+    supabase.from('transactions').select('id', { count: 'exact', head: true }).eq('investorId', id),
+  ])
+  if ((ownerships.count ?? 0) > 0 || (transactions.count ?? 0) > 0) {
+    return { error: 'This investor has holdings or transactions and cannot be deleted.' }
+  }
+
+  const { error: authError } = await supabase.auth.admin.deleteUser(id)
+  if (authError) {
+    // No auth user (or already gone) — remove the profile row directly.
+    const { error: rowError } = await supabase.from('investors').delete().eq('id', id)
+    if (rowError) return { error: 'Could not delete this investor.' }
+  }
+
+  await recordAudit({
+    actor: admin,
+    action: 'investor.delete',
+    entityType: 'investor',
+    entityId: id,
+    before: { name: investor.name, email: investor.email },
+    after: null,
+  })
+
+  revalidatePath('/admin/investors')
+  return { success: true }
 }
 
 // Allocate property units to a KYC-approved investor. Units are reserved
@@ -71,6 +150,29 @@ export async function allocateUnitsToInvestorAction(propertyId: string, formData
     entityId: `${propertyId}:${investorId}`,
     before: null,
     after: { investorId, propertyId, units, unitPrice: property.unitPrice },
+  })
+
+  revalidatePath(`/admin/properties/${propertyId}/edit`)
+  revalidatePath('/admin/properties')
+  return { success: true }
+}
+
+// Remove an investor's allocation from a property — deletes the ownership and
+// returns the units to the pool. Frees the property/investor from the delete
+// guards once no holdings remain.
+export async function removeAllocationAction(propertyId: string, investorId: string) {
+  const admin = await requireAdmin()
+
+  const units = await removeOwnership(investorId, propertyId)
+  if (units === 0) return { error: 'Allocation not found' }
+
+  await recordAudit({
+    actor: admin,
+    action: 'ownership.remove',
+    entityType: 'ownership',
+    entityId: `${propertyId}:${investorId}`,
+    before: { investorId, propertyId, units },
+    after: null,
   })
 
   revalidatePath(`/admin/properties/${propertyId}/edit`)

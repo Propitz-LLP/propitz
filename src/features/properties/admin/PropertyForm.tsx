@@ -267,7 +267,7 @@ export function PropertyForm({
 
   const api: PropertyFormApi = {
     isEdit, property, documents,
-    approvedInvestors: investors, ownerships, feeRatePct, gstRatePct,
+    investors, ownerships, feeRatePct, gstRatePct,
     name, slug, city, district, state, pinCode, assetType, description,
     totalVal, totalUnits, unitPrice, minUnits, yieldPct, growthPct, holdingPeriod, lockInPeriod,
     emoji, totalArea, areaUnit, imageFile, imagePreview, pendingDocs,

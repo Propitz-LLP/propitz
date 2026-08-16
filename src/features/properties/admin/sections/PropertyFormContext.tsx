@@ -39,7 +39,8 @@ export interface PropertyFormApi {
   documents?: InvestorDocument[]
 
   // ── investors (allocation) ──
-  approvedInvestors: Investor[]
+  // All investors — the dropdown shows everyone; only KYC-approved are selectable.
+  investors: Investor[]
   ownerships: OwnershipRow[]
   feeRatePct: number
   gstRatePct: number

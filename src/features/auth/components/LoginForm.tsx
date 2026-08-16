@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { loginAction, signUpAction } from '../actions'
 
 type Tab = 'investor' | 'admin'
@@ -13,15 +12,9 @@ const DEMO_EMAILS: Record<Tab, string> = {
 }
 
 export function LoginForm() {
-  const searchParams = useSearchParams()
-  // An invite link (/login?mode=signup&email=…) lands the investor straight on
-  // the Create account screen, pre-filled with the address the admin invited.
-  const invited = searchParams.get('mode') === 'signup'
-  const invitedEmail = searchParams.get('email') ?? ''
-
   const [tab, setTab] = useState<Tab>('investor')
-  const [mode, setMode] = useState<Mode>(invited ? 'signup' : 'signin')
-  const [email, setEmail] = useState(invited ? invitedEmail : DEMO_EMAILS.investor)
+  const [mode, setMode] = useState<Mode>('signin')
+  const [email, setEmail] = useState(DEMO_EMAILS.investor)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()

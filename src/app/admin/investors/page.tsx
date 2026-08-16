@@ -1,8 +1,8 @@
-import Link from 'next/link'
-import { Suspense } from 'react'
 import { requireAdmin } from '@/lib/auth'
+import { config } from '@/lib/config'
 import { listAllInvestors } from '@/lib/db/investors'
-import { SuccessBanner } from '@/components/ui/SuccessBanner'
+import { AddInvestorButton } from '@/features/investors/components/AddInvestorButton'
+import { InvestorActions } from '@/features/investors/components/InvestorActions'
 import type { KycStatus } from '@/types'
 
 const KYC_BADGE: Record<KycStatus, string> = {
@@ -16,13 +16,10 @@ const KYC_BADGE: Record<KycStatus, string> = {
 export default async function AdminInvestorsPage() {
   await requireAdmin()
   const investors = await listAllInvestors()
+  const canDelete = config.features.allowInvestorDelete
 
   return (
     <div className="max-w-[1100px] mx-auto px-8 py-8">
-      <Suspense>
-        <SuccessBanner />
-      </Suspense>
-
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28 }}>
         <div>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, color: 'var(--navy)', marginBottom: 4 }}>
@@ -30,29 +27,13 @@ export default async function AdminInvestorsPage() {
           </h1>
           <p style={{ fontSize: 13, color: 'var(--slate-light)' }}>{investors.length} total</p>
         </div>
-        <Link
-          href="/admin/investors/new"
-          style={{
-            padding: '10px 20px', borderRadius: 8, fontSize: 13.5, fontWeight: 600,
-            background: 'var(--gold)', color: 'var(--navy)', textDecoration: 'none',
-          }}
-        >
-          + Invite Investor
-        </Link>
+        <AddInvestorButton />
       </div>
 
       {investors.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
           <p style={{ fontSize: 14, color: 'var(--slate-light)', marginBottom: 16 }}>No investors yet.</p>
-          <Link
-            href="/admin/investors/new"
-            style={{
-              display: 'inline-block', padding: '10px 20px', borderRadius: 8, fontSize: 13.5, fontWeight: 600,
-              background: 'var(--gold)', color: 'var(--navy)', textDecoration: 'none',
-            }}
-          >
-            + Invite Investor
-          </Link>
+          <AddInvestorButton />
         </div>
       ) : (
         <table className="data-table">
@@ -62,6 +43,7 @@ export default async function AdminInvestorsPage() {
               <th>Email</th>
               <th>Type</th>
               <th>KYC</th>
+              <th className="num">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -81,6 +63,9 @@ export default async function AdminInvestorsPage() {
                 <td style={{ fontSize: 13, color: 'var(--slate-light)' }}>{inv.type}</td>
                 <td>
                   <span className={`badge ${KYC_BADGE[inv.kycStatus]}`}>{inv.kycStatus}</span>
+                </td>
+                <td className="num">
+                  <InvestorActions id={inv.id} kycStatus={inv.kycStatus} canDelete={canDelete} />
                 </td>
               </tr>
             ))}

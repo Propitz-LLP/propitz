@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/auth'
 import { getPropertyByIdAdmin, getValuationHistory } from '@/lib/db/properties'
 import { getDocumentsByProperty } from '@/lib/db/documents'
-import { listApprovedInvestors } from '@/lib/db/investors'
+import { listAllInvestors } from '@/lib/db/investors'
 import { getOwnershipsWithInvestorByProperty } from '@/lib/db/ownerships'
 import { config } from '@/lib/config'
 import { PropertyForm } from '@/features/properties/admin/PropertyForm'
@@ -17,10 +17,10 @@ export default async function EditPropertyPage({ params }: Props) {
   await requireAdmin()
   const property = await getPropertyByIdAdmin(slug)
   if (!property) notFound()
-  const [valuationHistory, documents, approvedInvestors, ownerships] = await Promise.all([
+  const [valuationHistory, documents, investors, ownerships] = await Promise.all([
     getValuationHistory(property.id),
     getDocumentsByProperty(property.id),
-    listApprovedInvestors(),
+    listAllInvestors(),
     getOwnershipsWithInvestorByProperty(property.id),
   ])
   return (
@@ -32,7 +32,7 @@ export default async function EditPropertyPage({ params }: Props) {
       <PropertyForm
         property={property}
         documents={documents}
-        investors={approvedInvestors}
+        investors={investors}
         ownerships={ownerships}
         feeRatePct={config.platform.feeRatePct}
         gstRatePct={config.platform.gstOnFeeRatePct}

@@ -16,7 +16,10 @@ export type AuditAction =
   | 'document.upload'
   | 'document.delete'
   | 'distribution.run'
+  | 'investor.create'
+  | 'investor.delete'
   | 'ownership.allocate'
+  | 'ownership.remove'
 
 export type AuditEntityType =
   | 'investor'
