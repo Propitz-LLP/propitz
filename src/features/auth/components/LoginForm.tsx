@@ -27,11 +27,10 @@ export function LoginForm() {
     setError(null)
   }
 
-  // Send the investor to the reset screen with their email pre-filled.
+  // Send the investor to the reset screen — they enter their email there (we
+  // don't carry over the login field, which pre-fills demo accounts for testing).
   function handleResetPassword() {
-    setError(null)
-    if (!email) { setError('Enter your email address above first'); return }
-    router.push(`/reset-password?email=${encodeURIComponent(email)}`)
+    router.push('/reset-password')
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {

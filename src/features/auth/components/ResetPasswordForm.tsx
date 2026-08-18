@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { setPasswordAndLoginAction } from '../actions'
 
-export function ResetPasswordForm({ email: initialEmail }: { email?: string | null }) {
-  const [email, setEmail] = useState(initialEmail ?? '')
-  const emailLocked = !!initialEmail
+export function ResetPasswordForm() {
+  // Email is entered here, not carried over from the login screen (which
+  // pre-fills demo accounts for testing — we don't want that leaking in).
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -46,9 +47,8 @@ export function ResetPasswordForm({ email: initialEmail }: { email?: string | nu
             <label className="form-label">Email</label>
             <input
               type="email" value={email} onChange={e => setEmail(e.target.value)}
-              disabled={emailLocked} readOnly={emailLocked} required autoComplete="username"
+              required autoComplete="username"
               placeholder="name@example.com" className="form-input"
-              style={emailLocked ? { opacity: 0.7, cursor: 'not-allowed' } : undefined}
             />
           </div>
           <div>
