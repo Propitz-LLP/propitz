@@ -1,9 +1,9 @@
 'use server'
 
-import { requireAdmin, generatePasswordSetupLink } from '@/lib/auth'
+import { requireAdmin } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { createAdminClient } from '@/lib/supabase/server'
-import { sendInvestorSetup } from '@/lib/notifications/email'
+import { sendInvestorWelcome } from '@/lib/notifications/email'
 import { recordAudit } from '@/lib/audit'
 import { createInvestor, getInvestorByIdAdmin } from '@/lib/db/investors'
 import { getPropertyByIdAdmin, reserveUnits } from '@/lib/db/properties'
@@ -58,13 +58,10 @@ export async function createInvestorAction(formData: FormData) {
     return { error: { _form: ['Could not create the investor profile'] } }
   }
 
-  // Let the investor set their own password: email them a one-time setup link.
-  // Best-effort — the admin can also resend it later via "Forgot password".
-  const setupLink = await generatePasswordSetupLink(email).catch(() => null)
-  if (setupLink) {
-    await sendInvestorSetup(email, name.trim(), setupLink)
-      .catch(err => console.error('[investor.create] setup email failed for', email, '—', err instanceof Error ? err.message : err))
-  }
+  // Notify the investor. They set their own password from the login screen
+  // ("Change / Reset password"). Best-effort — a random password already exists.
+  await sendInvestorWelcome(email, name.trim(), `${config.app.url}/login`)
+    .catch(err => console.error('[investor.create] welcome email failed for', email, '—', err instanceof Error ? err.message : err))
 
   await recordAudit({
     actor: admin,

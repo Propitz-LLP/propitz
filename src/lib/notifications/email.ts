@@ -85,28 +85,16 @@ export async function sendKycReceived(to: string, name: string): Promise<void> {
   })
 }
 
-// Sent when an admin creates an investor — they set their own password here.
-export async function sendInvestorSetup(to: string, name: string, link: string): Promise<void> {
+// Sent when an admin creates an investor. No magic link — the investor sets
+// their own password from the login screen ("Change / Reset password").
+export async function sendInvestorWelcome(to: string, name: string, loginUrl: string): Promise<void> {
   await provider.send({
     to,
-    subject: 'Set up your Propitz account',
+    subject: 'Your Propitz account is ready',
     html: `<p>Hi ${name},</p>
-<p>An investor account has been created for you on Propitz. Set your password to log in:</p>
-<p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#1B3057;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Set your password →</a></p>
-<p>Or paste this link into your browser:<br>${link}</p>
-<p style="color:#667">This link can be used once and expires after a short time. If it expires, use “Forgot password” on the login page.</p>`,
-  })
-}
-
-// Sent from the login "Forgot password" flow.
-export async function sendPasswordReset(to: string, link: string): Promise<void> {
-  await provider.send({
-    to,
-    subject: 'Reset your Propitz password',
-    html: `<p>We received a request to reset your Propitz password. Click below to set a new one:</p>
-<p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#1B3057;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Reset password →</a></p>
-<p>Or paste this link into your browser:<br>${link}</p>
-<p style="color:#667">If you didn’t request this, you can ignore this email. The link expires after a short time.</p>`,
+<p>An investor account has been created for you on Propitz. To get started, open the login page and use <strong>“Change / Reset password”</strong> to set your password — you’ll be signed in straight away.</p>
+<p><a href="${loginUrl}" style="display:inline-block;padding:10px 18px;background:#1B3057;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Go to login →</a></p>
+<p>Or paste this into your browser:<br>${loginUrl}</p>`,
   })
 }
 

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { loginAction, signUpAction, requestPasswordResetAction } from '../actions'
+import { useRouter } from 'next/navigation'
+import { loginAction, signUpAction } from '../actions'
 
 type Tab = 'investor' | 'admin'
 type Mode = 'signin' | 'signup'
@@ -12,31 +13,25 @@ const DEMO_EMAILS: Record<Tab, string> = {
 }
 
 export function LoginForm() {
+  const router = useRouter()
   const [tab, setTab] = useState<Tab>('investor')
   const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState(DEMO_EMAILS.investor)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [resetMsg, setResetMsg] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function switchTab(t: Tab) {
     setTab(t)
     setEmail(DEMO_EMAILS[t])
     setError(null)
-    setResetMsg(null)
   }
 
-  function handleForgotPassword() {
+  // Send the investor to the reset screen with their email pre-filled.
+  function handleResetPassword() {
     setError(null)
-    setResetMsg(null)
     if (!email) { setError('Enter your email address above first'); return }
-    const fd = new FormData()
-    fd.set('email', email)
-    startTransition(async () => {
-      await requestPasswordResetAction(fd)
-      setResetMsg(`If an account exists for ${email}, a password link is on its way.`)
-    })
+    router.push(`/reset-password?email=${encodeURIComponent(email)}`)
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -176,9 +171,9 @@ export function LoginForm() {
                   <span
                     className="text-xs cursor-pointer"
                     style={{ color: 'var(--gold)' }}
-                    onClick={handleForgotPassword}
+                    onClick={handleResetPassword}
                   >
-                    Forgot password?
+                    Change / Reset password
                   </span>
                 </div>
               )}
@@ -194,14 +189,6 @@ export function LoginForm() {
               </div>
             )}
 
-            {resetMsg && (
-              <div
-                className="p-3 rounded-lg text-sm"
-                style={{ background: 'rgba(31,143,75,0.1)', color: 'var(--green)' }}
-              >
-                {resetMsg}
-              </div>
-            )}
 
             {/* Submit */}
             <button

@@ -3,9 +3,7 @@
 // All features call these functions, never the auth SDK directly.
 
 import { createClient } from '@/lib/supabase/server'
-import { config } from '@/lib/config'
 import { redirect } from 'next/navigation'
-import type { EmailOtpType } from '@supabase/supabase-js'
 import type { AuthUser, UserRole } from '@/types'
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
@@ -60,34 +58,4 @@ export async function signOut() {
 export async function signUp(email: string, password: string) {
   const supabase = await createClient()
   return supabase.auth.signUp({ email, password })
-}
-
-// ── Password setup / recovery ──────────────────────────────────
-// Admin-created investors have no password. This mints a single-use recovery
-// link (via the service-role admin API) that points at our own /auth/confirm
-// handler, so it works without any Supabase redirect-URL / email-template config.
-// Returns null if the link can't be generated (e.g. unknown email).
-export async function generatePasswordSetupLink(email: string): Promise<string | null> {
-  const { createAdminClient } = await import('@/lib/supabase/server')
-  const supabase = await createAdminClient()
-  const { data, error } = await supabase.auth.admin.generateLink({ type: 'recovery', email })
-  const tokenHash = data?.properties?.hashed_token
-  if (error || !tokenHash) {
-    console.error('[auth] generatePasswordSetupLink: generateLink failed for', email, '—', error?.message ?? 'no hashed_token returned')
-    return null
-  }
-  const params = new URLSearchParams({ token_hash: tokenHash, type: 'recovery', next: '/reset-password' })
-  return `${config.app.url}/auth/confirm?${params.toString()}`
-}
-
-// Consume an email OTP token (recovery/…) and establish the session (server-side).
-export async function verifyEmailOtp(tokenHash: string, type: EmailOtpType) {
-  const supabase = await createClient()
-  return supabase.auth.verifyOtp({ type, token_hash: tokenHash })
-}
-
-// Set the current (recovery-session) user's password.
-export async function updatePassword(password: string) {
-  const supabase = await createClient()
-  return supabase.auth.updateUser({ password })
 }

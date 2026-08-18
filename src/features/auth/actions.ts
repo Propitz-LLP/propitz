@@ -1,28 +1,39 @@
 'use server'
 
 import { createClient, createAdminClient } from '@/lib/supabase/server'
-import { generatePasswordSetupLink, updatePassword } from '@/lib/auth'
-import { sendPasswordReset } from '@/lib/notifications/email'
 import { redirect } from 'next/navigation'
 
-// "Forgot password" — email a reset link. Always reports success so we never
-// reveal whether an account exists for the address.
-export async function requestPasswordResetAction(formData: FormData) {
+// ⚠️ SECURITY NOTE — INTENTIONALLY UNVERIFIED (closed internal tool).
+// Sets the password for whatever email is submitted and signs the user in, with
+// NO proof that the requester owns the address. This is an account-takeover
+// vector if the app is ever exposed publicly; it exists only because email-based
+// verification isn't available here. Replace with an email link / OTP before any
+// public deployment.
+export async function setPasswordAndLoginAction(formData: FormData) {
   const email = String(formData.get('email') ?? '').trim()
-  if (!email) return { error: 'Enter your email address' }
-
-  const link = await generatePasswordSetupLink(email).catch(() => null)
-  if (link) await sendPasswordReset(email, link).catch(() => {})
-  return { success: true }
-}
-
-// Set a new password for the current recovery/authenticated session.
-export async function updatePasswordAction(formData: FormData) {
   const password = String(formData.get('password') ?? '')
+  if (!email) return { error: 'Enter your email address' }
   if (password.length < 8) return { error: 'Password must be at least 8 characters' }
 
-  const { error } = await updatePassword(password)
-  if (error) return { error: 'Could not update your password — the link may have expired. Request a new one from the login page.' }
+  const admin = await createAdminClient()
+
+  // Resolve the auth user id by email (admin list is paginated).
+  let userId: string | undefined
+  for (let page = 1; page <= 10 && !userId; page++) {
+    const { data } = await admin.auth.admin.listUsers({ page, perPage: 200 })
+    userId = data?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase())?.id
+    if ((data?.users?.length ?? 0) < 200) break
+  }
+  if (!userId) return { error: 'No account found for that email' }
+
+  const { error: updateError } = await admin.auth.admin.updateUserById(userId, { password })
+  if (updateError) return { error: 'Could not set the password. Please try again.' }
+
+  // Sign in so the investor lands straight in the app.
+  const supabase = await createClient()
+  const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+  if (signInError) return { error: 'Password set, but automatic sign-in failed — please sign in.' }
+
   return { success: true }
 }
 
