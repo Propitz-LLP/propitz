@@ -16,10 +16,11 @@ export const config = {
     env: optional('NODE_ENV', 'development'),
   },
 
-  // Opt-in capability flags. Off unless the env var is explicitly set to 'true'.
+  // Capability flags.
   features: {
-    // Allows admins to hard-delete investors from the back office.
-    allowInvestorDelete: optional('ALLOW_INVESTOR_DELETE', 'false') === 'true',
+    // Admins can hard-delete investors by default; set ALLOW_INVESTOR_DELETE=false
+    // to explicitly turn it off.
+    allowInvestorDelete: optional('ALLOW_INVESTOR_DELETE', 'true').toLowerCase() !== 'false',
   },
 
   supabase: {
