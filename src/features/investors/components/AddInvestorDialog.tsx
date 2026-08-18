@@ -101,9 +101,9 @@ export function AddInvestorDialog({
 
             <div>
               <label style={labelStyle}>Phone <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input className="form-input" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98765 43210" />
+              <input className="form-input" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+1 415 555 0123" />
               <div style={{ fontSize: 11.5, color: 'var(--slate-light)', marginTop: 3 }}>
-                Include the +91 country code followed by a 10-digit number.
+                Include the country code (e.g. +1, +44, +91).
               </div>
               <FieldError msg={err('phone')} />
             </div>

@@ -85,6 +85,19 @@ export async function sendKycReceived(to: string, name: string): Promise<void> {
   })
 }
 
+// Sent when an admin creates an investor. No magic link — the investor sets
+// their own password from the login screen ("Change / Reset password").
+export async function sendInvestorWelcome(to: string, name: string, loginUrl: string): Promise<void> {
+  await provider.send({
+    to,
+    subject: 'Your Propitz account is ready',
+    html: `<p>Hi ${name},</p>
+<p>An investor account has been created for you on Propitz. To get started, open the login page and use <strong>“Change / Reset password”</strong> to set your password — you’ll be signed in straight away.</p>
+<p><a href="${loginUrl}" style="display:inline-block;padding:10px 18px;background:#1B3057;color:#fff;border-radius:8px;text-decoration:none;font-weight:600">Go to login →</a></p>
+<p>Or paste this into your browser:<br>${loginUrl}</p>`,
+  })
+}
+
 export async function sendKycApproved(to: string, name: string): Promise<void> {
   await provider.send({
     to,

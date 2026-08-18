@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { loginAction, signUpAction } from '../actions'
 
 type Tab = 'investor' | 'admin'
@@ -12,6 +13,7 @@ const DEMO_EMAILS: Record<Tab, string> = {
 }
 
 export function LoginForm() {
+  const router = useRouter()
   const [tab, setTab] = useState<Tab>('investor')
   const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState(DEMO_EMAILS.investor)
@@ -23,6 +25,13 @@ export function LoginForm() {
     setTab(t)
     setEmail(DEMO_EMAILS[t])
     setError(null)
+  }
+
+  // Send the investor to the reset screen with their email pre-filled.
+  function handleResetPassword() {
+    setError(null)
+    if (!email) { setError('Enter your email address above first'); return }
+    router.push(`/reset-password?email=${encodeURIComponent(email)}`)
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -159,8 +168,12 @@ export function LoginForm() {
               />
               {mode === 'signin' && (
                 <div className="text-right mt-1">
-                  <span className="text-xs cursor-pointer" style={{ color: 'var(--gold)' }}>
-                    Forgot password?
+                  <span
+                    className="text-xs cursor-pointer"
+                    style={{ color: 'var(--gold)' }}
+                    onClick={handleResetPassword}
+                  >
+                    Change / Reset password
                   </span>
                 </div>
               )}
@@ -175,6 +188,7 @@ export function LoginForm() {
                 ⚠ {error}
               </div>
             )}
+
 
             {/* Submit */}
             <button

@@ -3,6 +3,7 @@
 import { requireAdmin } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { createAdminClient } from '@/lib/supabase/server'
+import { sendInvestorWelcome } from '@/lib/notifications/email'
 import { recordAudit } from '@/lib/audit'
 import { createInvestor, getInvestorByIdAdmin } from '@/lib/db/investors'
 import { getPropertyByIdAdmin, reserveUnits } from '@/lib/db/properties'
@@ -56,6 +57,11 @@ export async function createInvestorAction(formData: FormData) {
     await supabase.auth.admin.deleteUser(data.user.id).catch(() => {})
     return { error: { _form: ['Could not create the investor profile'] } }
   }
+
+  // Notify the investor. They set their own password from the login screen
+  // ("Change / Reset password"). Best-effort — a random password already exists.
+  await sendInvestorWelcome(email, name.trim(), `${config.app.url}/login`)
+    .catch(err => console.error('[investor.create] welcome email failed for', email, '—', err instanceof Error ? err.message : err))
 
   await recordAudit({
     actor: admin,
