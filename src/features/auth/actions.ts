@@ -1,7 +1,30 @@
 'use server'
 
 import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { generatePasswordSetupLink, updatePassword } from '@/lib/auth'
+import { sendPasswordReset } from '@/lib/notifications/email'
 import { redirect } from 'next/navigation'
+
+// "Forgot password" — email a reset link. Always reports success so we never
+// reveal whether an account exists for the address.
+export async function requestPasswordResetAction(formData: FormData) {
+  const email = String(formData.get('email') ?? '').trim()
+  if (!email) return { error: 'Enter your email address' }
+
+  const link = await generatePasswordSetupLink(email).catch(() => null)
+  if (link) await sendPasswordReset(email, link).catch(() => {})
+  return { success: true }
+}
+
+// Set a new password for the current recovery/authenticated session.
+export async function updatePasswordAction(formData: FormData) {
+  const password = String(formData.get('password') ?? '')
+  if (password.length < 8) return { error: 'Password must be at least 8 characters' }
+
+  const { error } = await updatePassword(password)
+  if (error) return { error: 'Could not update your password — the link may have expired. Request a new one from the login page.' }
+  return { success: true }
+}
 
 export async function loginAction(formData: FormData) {
   const email = formData.get('email') as string

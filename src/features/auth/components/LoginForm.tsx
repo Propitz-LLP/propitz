@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { loginAction, signUpAction } from '../actions'
+import { loginAction, signUpAction, requestPasswordResetAction } from '../actions'
 
 type Tab = 'investor' | 'admin'
 type Mode = 'signin' | 'signup'
@@ -17,12 +17,26 @@ export function LoginForm() {
   const [email, setEmail] = useState(DEMO_EMAILS.investor)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [resetMsg, setResetMsg] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function switchTab(t: Tab) {
     setTab(t)
     setEmail(DEMO_EMAILS[t])
     setError(null)
+    setResetMsg(null)
+  }
+
+  function handleForgotPassword() {
+    setError(null)
+    setResetMsg(null)
+    if (!email) { setError('Enter your email address above first'); return }
+    const fd = new FormData()
+    fd.set('email', email)
+    startTransition(async () => {
+      await requestPasswordResetAction(fd)
+      setResetMsg(`If an account exists for ${email}, a password link is on its way.`)
+    })
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -159,7 +173,11 @@ export function LoginForm() {
               />
               {mode === 'signin' && (
                 <div className="text-right mt-1">
-                  <span className="text-xs cursor-pointer" style={{ color: 'var(--gold)' }}>
+                  <span
+                    className="text-xs cursor-pointer"
+                    style={{ color: 'var(--gold)' }}
+                    onClick={handleForgotPassword}
+                  >
                     Forgot password?
                   </span>
                 </div>
@@ -173,6 +191,15 @@ export function LoginForm() {
                 style={{ background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid rgba(192,57,43,0.2)' }}
               >
                 ⚠ {error}
+              </div>
+            )}
+
+            {resetMsg && (
+              <div
+                className="p-3 rounded-lg text-sm"
+                style={{ background: 'rgba(31,143,75,0.1)', color: 'var(--green)' }}
+              >
+                {resetMsg}
               </div>
             )}
 

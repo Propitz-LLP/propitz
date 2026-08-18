@@ -1,8 +1,9 @@
 'use server'
 
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, generatePasswordSetupLink } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { createAdminClient } from '@/lib/supabase/server'
+import { sendInvestorSetup } from '@/lib/notifications/email'
 import { recordAudit } from '@/lib/audit'
 import { createInvestor, getInvestorByIdAdmin } from '@/lib/db/investors'
 import { getPropertyByIdAdmin, reserveUnits } from '@/lib/db/properties'
@@ -55,6 +56,14 @@ export async function createInvestorAction(formData: FormData) {
     // Don't orphan a login if the profile insert fails — roll the auth user back.
     await supabase.auth.admin.deleteUser(data.user.id).catch(() => {})
     return { error: { _form: ['Could not create the investor profile'] } }
+  }
+
+  // Let the investor set their own password: email them a one-time setup link.
+  // Best-effort — the admin can also resend it later via "Forgot password".
+  const setupLink = await generatePasswordSetupLink(email).catch(() => null)
+  if (setupLink) {
+    await sendInvestorSetup(email, name.trim(), setupLink)
+      .catch(err => console.error('[investor.create] setup email failed for', email, '—', err instanceof Error ? err.message : err))
   }
 
   await recordAudit({
